@@ -1,0 +1,284 @@
+#include "cvinfer/cvinfer_api.h"
+
+#include "yolo/yolo.h"
+
+#include <algorithm>
+#include <cstring>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+struct cvinfer_model {
+    cvinfer_model_type_t type{};
+    std::unique_ptr<cvinfer::yolo::Detector> detector;
+    std::unique_ptr<cvinfer::yolo::Segmentor> segmentor;
+};
+
+struct cvinfer_result {
+    cvinfer_model_type_t type{};
+    std::vector<cvinfer::yolo::Detection> detections;
+    std::vector<cvinfer::yolo::Segmentation> segmentations;
+    cvinfer::yolo::Timing timing{};
+};
+
+namespace {
+thread_local std::string g_last_error;
+
+void clear_error() { g_last_error.clear(); }
+void set_error(const char* message) { g_last_error = message ? message : "Unknown error"; }
+void set_error(const std::exception& error) { g_last_error = error.what(); }
+
+cvinfer_status_t invalid_argument(const char* message) {
+    set_error(message);
+    return CVINFER_STATUS_INVALID_ARGUMENT;
+}
+
+cvinfer::yolo::Config make_config(const cvinfer_model_config_t* source) {
+    cvinfer::yolo::Config config;
+    if (!source) return config;
+    if (source->input_width > 0) config.input_width = source->input_width;
+    if (source->input_height > 0) config.input_height = source->input_height;
+    if (source->class_count > 0) config.class_count = source->class_count;
+    if (source->confidence_threshold >= 0.0F) config.confidence_threshold = source->confidence_threshold;
+    if (source->nms_threshold >= 0.0F) config.nms_threshold = source->nms_threshold;
+    if (source->mask_threshold >= 0.0F) config.mask_threshold = source->mask_threshold;
+    config.class_agnostic_nms = source->class_agnostic_nms != 0;
+    if (source->input_name) config.input_name = source->input_name;
+    if (source->output_name) config.output_name = source->output_name;
+    if (source->prototype_name) config.prototype_name = source->prototype_name;
+    return config;
+}
+
+cvinfer::yolo::ComputeBackend parse_backend(int32_t value) {
+    switch (value) {
+    case CVINFER_BACKEND_AUTO: return cvinfer::yolo::ComputeBackend::Auto;
+    case CVINFER_BACKEND_CPU: return cvinfer::yolo::ComputeBackend::Cpu;
+    case CVINFER_BACKEND_CUDA: return cvinfer::yolo::ComputeBackend::Cuda;
+    default: throw std::invalid_argument("Unsupported compute backend");
+    }
+}
+
+cvinfer::yolo::Config make_config_v2(const cvinfer_model_config_v2_t* source) {
+    cvinfer::yolo::Config config;
+    if (!source) return config;
+    if (source->input_width > 0) config.input_width = source->input_width;
+    if (source->input_height > 0) config.input_height = source->input_height;
+    if (source->class_count > 0) config.class_count = source->class_count;
+    if (source->confidence_threshold >= 0.0F) config.confidence_threshold = source->confidence_threshold;
+    if (source->nms_threshold >= 0.0F) config.nms_threshold = source->nms_threshold;
+    if (source->mask_threshold >= 0.0F) config.mask_threshold = source->mask_threshold;
+    config.class_agnostic_nms = source->class_agnostic_nms != 0;
+    config.preprocess_backend = parse_backend(source->preprocess_backend);
+    config.postprocess_backend = parse_backend(source->postprocess_backend);
+    if (source->input_name) config.input_name = source->input_name;
+    if (source->output_name) config.output_name = source->output_name;
+    if (source->prototype_name) config.prototype_name = source->prototype_name;
+    return config;
+}
+cvinfer_status_t handle_exception(const std::exception& error) {
+    set_error(error);
+    return CVINFER_STATUS_RUNTIME_ERROR;
+}
+} // namespace
+
+extern "C" {
+
+CVINFER_API const char* CVINFER_CALL cvinfer_last_error(void) {
+    return g_last_error.c_str();
+}
+
+CVINFER_API void CVINFER_CALL cvinfer_model_config_init(cvinfer_model_config_t* config) {
+    if (!config) return;
+    config->input_width = 0;
+    config->input_height = 0;
+    config->class_count = 80;
+    config->confidence_threshold = 0.25F;
+    config->nms_threshold = 0.45F;
+    config->mask_threshold = 0.5F;
+    config->class_agnostic_nms = 0;
+    config->input_name = nullptr;
+    config->output_name = nullptr;
+    config->prototype_name = nullptr;
+}
+
+CVINFER_API void CVINFER_CALL cvinfer_model_config_v2_init(cvinfer_model_config_v2_t* config) {
+    if (!config) return;
+    config->input_width = 0;
+    config->input_height = 0;
+    config->class_count = 80;
+    config->confidence_threshold = 0.25F;
+    config->nms_threshold = 0.45F;
+    config->mask_threshold = 0.5F;
+    config->class_agnostic_nms = 0;
+    config->input_name = nullptr;
+    config->output_name = nullptr;
+    config->prototype_name = nullptr;
+    config->preprocess_backend = CVINFER_BACKEND_AUTO;
+    config->postprocess_backend = CVINFER_BACKEND_AUTO;
+}
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create(
+    const char* engine_path,
+    cvinfer_model_type_t model_type,
+    const cvinfer_model_config_t* config,
+    cvinfer_model_t** model) {
+    clear_error();
+    if (!engine_path || !*engine_path || !model) return invalid_argument("engine_path, model and output handle are required");
+    *model = nullptr;
+    try {
+        auto instance = std::make_unique<cvinfer_model>();
+        instance->type = model_type;
+        const auto yolo_config = make_config(config);
+        if (model_type == CVINFER_MODEL_YOLO_DET) {
+            instance->detector = std::make_unique<cvinfer::yolo::Detector>(engine_path, yolo_config);
+        } else if (model_type == CVINFER_MODEL_YOLO_SEG) {
+            instance->segmentor = std::make_unique<cvinfer::yolo::Segmentor>(engine_path, yolo_config);
+        } else {
+            set_error("Unsupported model type");
+            return CVINFER_STATUS_UNSUPPORTED;
+        }
+        *model = instance.release();
+        return CVINFER_STATUS_OK;
+    } catch (const std::exception& error) {
+        return handle_exception(error);
+    }
+}
+
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create_v2(
+    const char* engine_path,
+    cvinfer_model_type_t model_type,
+    const cvinfer_model_config_v2_t* config,
+    cvinfer_model_t** model) {
+    clear_error();
+    if (!engine_path || !*engine_path || !model) return invalid_argument("engine_path, model and output handle are required");
+    *model = nullptr;
+    try {
+        auto instance = std::make_unique<cvinfer_model>();
+        instance->type = model_type;
+        const auto yolo_config = make_config_v2(config);
+        if (model_type == CVINFER_MODEL_YOLO_DET) {
+            instance->detector = std::make_unique<cvinfer::yolo::Detector>(engine_path, yolo_config);
+        } else if (model_type == CVINFER_MODEL_YOLO_SEG) {
+            instance->segmentor = std::make_unique<cvinfer::yolo::Segmentor>(engine_path, yolo_config);
+        } else {
+            set_error("Unsupported model type");
+            return CVINFER_STATUS_UNSUPPORTED;
+        }
+        *model = instance.release();
+        return CVINFER_STATUS_OK;
+    } catch (const std::exception& error) {
+        return handle_exception(error);
+    }
+}
+CVINFER_API void CVINFER_CALL cvinfer_model_destroy(cvinfer_model_t* model) {
+    delete model;
+}
+
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_infer_bgr(
+    cvinfer_model_t* model,
+    const uint8_t* bgr,
+    int32_t width,
+    int32_t height,
+    int32_t channels,
+    cvinfer_result_t** result) {
+    clear_error();
+    if (!model || !bgr || width <= 0 || height <= 0 || channels < 3 || !result)
+        return invalid_argument("model, BGR image, dimensions and result are required");
+    *result = nullptr;
+    try {
+        auto output = std::make_unique<cvinfer_result>();
+        output->type = model->type;
+        if (model->type == CVINFER_MODEL_YOLO_DET && model->detector) {
+            output->detections = model->detector->infer_image(bgr, width, height, channels);
+            output->timing = model->detector->last_timing();
+        } else if (model->type == CVINFER_MODEL_YOLO_SEG && model->segmentor) {
+            output->segmentations = model->segmentor->infer_image(bgr, width, height, channels);
+            output->timing = model->segmentor->last_timing();
+        } else {
+            set_error("Invalid model handle");
+            return CVINFER_STATUS_INVALID_ARGUMENT;
+        }
+        *result = output.release();
+        return CVINFER_STATUS_OK;
+    } catch (const std::exception& error) {
+        return handle_exception(error);
+    }
+}
+
+CVINFER_API void CVINFER_CALL cvinfer_result_destroy(cvinfer_result_t* result) {
+    delete result;
+}
+
+CVINFER_API cvinfer_model_type_t CVINFER_CALL cvinfer_result_type(const cvinfer_result_t* result) {
+    return result ? result->type : static_cast<cvinfer_model_type_t>(0);
+}
+
+CVINFER_API size_t CVINFER_CALL cvinfer_result_count(const cvinfer_result_t* result) {
+    if (!result) return 0;
+    return result->type == CVINFER_MODEL_YOLO_SEG ? result->segmentations.size() : result->detections.size();
+}
+
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_get_detection(
+    const cvinfer_result_t* result,
+    size_t index,
+    cvinfer_detection_t* detection) {
+    clear_error();
+    if (!result || !detection) return invalid_argument("result and detection are required");
+    if (result->type != CVINFER_MODEL_YOLO_DET) return invalid_argument("Result is not a detection result");
+    if (index >= result->detections.size()) return invalid_argument("Detection index is out of range");
+    const auto& source = result->detections[index].box;
+    detection->box = {source.x1, source.y1, source.x2, source.y2, source.score, source.class_id};
+    return CVINFER_STATUS_OK;
+}
+
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_get_segmentation(
+    const cvinfer_result_t* result,
+    size_t index,
+    cvinfer_segmentation_info_t* segmentation) {
+    clear_error();
+    if (!result || !segmentation) return invalid_argument("result and segmentation are required");
+    if (result->type != CVINFER_MODEL_YOLO_SEG) return invalid_argument("Result is not a segmentation result");
+    if (index >= result->segmentations.size()) return invalid_argument("Segmentation index is out of range");
+    const auto& source = result->segmentations[index];
+    segmentation->box = {source.box.x1, source.box.y1, source.box.x2, source.box.y2, source.box.score, source.box.class_id};
+    segmentation->mask_width = source.mask_width;
+    segmentation->mask_height = source.mask_height;
+    segmentation->mask_bytes = source.mask.size();
+    return CVINFER_STATUS_OK;
+}
+
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_copy_mask(
+    const cvinfer_result_t* result,
+    size_t index,
+    uint8_t* destination,
+    size_t destination_bytes,
+    size_t* copied_bytes) {
+    clear_error();
+    if (!result) return invalid_argument("result is required");
+    if (result->type != CVINFER_MODEL_YOLO_SEG) return invalid_argument("Result is not a segmentation result");
+    if (index >= result->segmentations.size()) return invalid_argument("Segmentation index is out of range");
+    const auto& mask = result->segmentations[index].mask;
+    if (copied_bytes) *copied_bytes = mask.size();
+    if (destination_bytes < mask.size()) {
+        set_error("Destination mask buffer is too small");
+        return CVINFER_STATUS_BUFFER_TOO_SMALL;
+    }
+    if (!mask.empty() && !destination) return invalid_argument("Destination mask buffer is required");
+    if (!mask.empty()) std::memcpy(destination, mask.data(), mask.size());
+    return CVINFER_STATUS_OK;
+}
+
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_get_timing(
+    const cvinfer_result_t* result,
+    cvinfer_timing_t* timing) {
+    clear_error();
+    if (!result || !timing) return invalid_argument("result and timing are required");
+    timing->preprocess_ms = result->timing.preprocess_ms;
+    timing->inference_ms = result->timing.inference_ms;
+    timing->postprocess_ms = result->timing.postprocess_ms;
+    timing->total_ms = result->timing.total_ms;
+    return CVINFER_STATUS_OK;
+}
+
+} // extern "C"

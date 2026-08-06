@@ -1,0 +1,3 @@
+add_library(alanxinn_cvinfer_core STATIC src/trt_core.cpp)
+target_include_directories(alanxinn_cvinfer_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(alanxinn_cvinfer_core PUBLIC alanxinn_cvinfer_common)

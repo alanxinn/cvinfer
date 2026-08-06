@@ -1,0 +1,55 @@
+# build outputs
+build/
+build-*/
+buildold/
+cmake-build-*/
+out/
+bin/
+lib/
+runtime/
+
+# CMake / Ninja
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+install_manifest.txt
+*.ninja
+*.ninja_deps
+*.ninja_log
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.vcxproj*
+
+# binaries / intermediates
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.idb
+*.lib
+*.exp
+*.dll
+*.exe
+*.app
+
+# caches / logs
+*.log
+*.tmp
+*.temp
+
+# local models / generated artifacts
+*.engine
+*.plan
+*.onnx
+test/
+csharp/**/bin/
+csharp/**/obj/
+
+private/

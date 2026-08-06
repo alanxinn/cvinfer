@@ -1,0 +1,94 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net472;net6.0;net8.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>alanxinn</RootNamespace>
+    <AssemblyName>alanxinn.CvinferSharp</AssemblyName>
+    <PackageId>alanxinn.CvinferSharp</PackageId>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <InformationalVersion>0.1.0</InformationalVersion>
+    <Authors>alanxinn</Authors>
+    <Company>alanxinn</Company>
+    <Product>alanxinn CvinferSharp</Product>
+    <Description>.NET C# wrapper for the alanxinn_cvinfer TensorRT inference DLL.</Description>
+    <AssemblyTitle>alanxinn.CvinferSharp</AssemblyTitle>
+    <AssemblyDescription>C# managed wrapper for alanxinn_cvinfer.dll.</AssemblyDescription>
+    <PackageTags>TensorRT;YOLO;YOLO11;CUDA;inference;CSharp;PInvoke</PackageTags>
+    <PackageReleaseNotes>NuGet package for YOLO11 detection and segmentation inference with optional CUDA preprocessing and postprocessing acceleration.</PackageReleaseNotes>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PlatformTarget>x64</PlatformTarget>
+    <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin\alanxinn_cvinfer.dll')">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin</NativeRuntimeSource>
+    <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == ''">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-release\bin</NativeRuntimeSource>
+    <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64</NativeRuntimeDestination>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="README.md" />
+    <None Include="README.md" Pack="true" PackagePath="README.md" />
+  </ItemGroup>
+
+  <Target Name="CopyAlanxinnNativeRuntime"
+          BeforeTargets="Build;Pack"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <ItemGroup>
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer.dll"
+                                  Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer.dll')" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_cuda.dll"
+                                  Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_cuda.dll')" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvinfer.dll"
+                                  Condition="Exists('$(NativeRuntimeSource)\nvinfer.dll')" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\cudart64_*.dll" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\opencv_world*.dll" />
+      <AlanxinnNativeRuntimeFiles Remove="$(NativeRuntimeSource)\opencv_world*d.dll" />
+      <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer*.dll" />
+      <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\nvinfer*.dll" />
+      <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
+      <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
+    </ItemGroup>
+    <Delete Files="@(AlanxinnNativeStaleFiles)"
+            Condition="'@(AlanxinnNativeStaleFiles)' != ''" />
+    <MakeDir Directories="$(NativeRuntimeDestination)" Condition="'@(AlanxinnNativeRuntimeFiles)' != ''" />
+    <Copy SourceFiles="@(AlanxinnNativeRuntimeFiles)"
+          DestinationFolder="$(NativeRuntimeDestination)"
+          SkipUnchangedFiles="true"
+          Condition="'@(AlanxinnNativeRuntimeFiles)' != ''" />
+  </Target>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>
+      $(TargetsForTfmSpecificContentInPackage);PackAlanxinnNativeRuntime
+    </TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="PackAlanxinnNativeRuntime"
+          DependsOnTargets="CopyAlanxinnNativeRuntime"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <ItemGroup>
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer.dll"
+                                  Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer.dll')" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll"
+                                  Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll')" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer.dll"
+                                  Condition="Exists('$(NativeRuntimeDestination)\nvinfer.dll')" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
+      <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\opencv_world*d.dll" />
+      <TfmSpecificPackageFile Include="@(AlanxinnNativePackageFiles)"
+                              Condition="Exists('$(NativeRuntimeDestination)')">
+        <PackagePath>runtimes\win-x64\native\%(Filename)%(Extension)</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="ValidateAlanxinnNativeRuntime"
+          BeforeTargets="Pack"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <Error Text="alanxinn_cvinfer.dll was not found in '$(NativeRuntimeSource)'. Build the C++ runtime before packing the NuGet package."
+           Condition="!Exists('$(NativeRuntimeSource)\alanxinn_cvinfer.dll')" />
+  </Target>
+</Project>

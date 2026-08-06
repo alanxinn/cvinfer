@@ -1,0 +1,6 @@
+{
+  "productVersion": "0.1.0",
+  "cudaBackendVersion": "cuda-v0.1.0",
+  "cudaAbiVersion": "0.1",
+  "platform": "win-x64"
+}

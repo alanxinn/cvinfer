@@ -1,0 +1,90 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "ninja-msvc-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "toolset": {
+        "value": "host=x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CXX_COMPILER": "cl.exe",
+        "CMAKE_CUDA_COMPILER": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/bin/nvcc.exe",
+        "CMAKE_CUDA_HOST_COMPILER": "cl.exe",
+        "CUDA_ROOT": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8",
+        "TENSORRT_ROOT": "C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-8.6.1.6_cuda-11.8",
+        "OPENCV_ROOT": "E:/opencv/build"
+      },
+      "environment": {
+        "CUDA_PATH": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "ninja-msvc-debug",
+      "displayName": "Ninja + MSVC + CPU backend Debug",
+      "description": "Single-config Ninja build without the private CUDA backend.",
+      "inherits": "ninja-msvc-base",
+      "binaryDir": "${sourceDir}/build/ninja-msvc-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "ninja-msvc-release",
+      "displayName": "Ninja + MSVC + CPU backend Release",
+      "description": "Single-config Ninja build without the private CUDA backend.",
+      "inherits": "ninja-msvc-base",
+      "binaryDir": "${sourceDir}/build/ninja-msvc-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ninja-msvc-private-cuda-release",
+      "displayName": "Ninja + MSVC + Private CUDA Release",
+      "description": "Single-config Ninja build with the private CUDA backend.",
+      "inherits": "ninja-msvc-base",
+      "binaryDir": "${sourceDir}/build/ninja-msvc-private-cuda-release",
+      "cacheVariables": {
+        "BUILD_CUDA_BACKEND": "ON",
+        "ALANXINN_CUDA_BACKEND_DIR": "${sourceDir}/private/cuda_backend",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "build-ninja-msvc-debug",
+      "displayName": "Build Ninja + MSVC + CPU backend Debug",
+      "configurePreset": "ninja-msvc-debug"
+    },
+    {
+      "name": "build-ninja-msvc-release",
+      "displayName": "Build Ninja + MSVC + CPU backend Release",
+      "configurePreset": "ninja-msvc-release"
+    },
+    {
+      "name": "build-ninja-msvc-private-cuda-release",
+      "displayName": "Build Ninja + MSVC + Private CUDA Release",
+      "configurePreset": "ninja-msvc-private-cuda-release"
+    }
+  ]
+}

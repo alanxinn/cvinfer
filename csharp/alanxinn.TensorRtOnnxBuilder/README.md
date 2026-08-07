@@ -8,7 +8,7 @@ TensorRT engine。类库不启动 `trtexec.exe`，而是通过 P/Invoke 调用�
 ## 安装
 
 ```powershell
-dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.1
+dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.2
 ```
 
 使用条件：Windows x64、兼容的 NVIDIA 驱动和与 engine 目标环境匹配的 TensorRT。
@@ -22,16 +22,16 @@ engine 仍然与 TensorRT 版本、CUDA 版本和 GPU 架构相关，不能保�
 `runtimes/win-x64/native`、应用目录、本地缓存目录。找不到完整 runtime 时，默认下载：
 
 ```text
-https://github.com/alanxinn/cvinfer/releases/download/v0.1.1/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip
+https://github.com/alanxinn/cvinfer/releases/download/v0.1.2/tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.2.zip
 ```
 
-缓存目录默认为 `%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.1.1\win-x64`。
+缓存目录默认为 `%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.1.2\win-x64`。
 也可以在启动时显式配置镜像、缓存和 SHA256：
 
 ```csharp
 using alanxinn.TensorRt;
 
-TensorRtRuntime.DownloadUrl = "https://your-server/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip";
+TensorRtRuntime.DownloadUrl = "https://your-server/tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.2.zip";
 TensorRtRuntime.ExpectedSha256 = "ZIP 文件 SHA256";
 TensorRtRuntime.CacheDirectory = @"D:\TensorRT\runtime";
 TensorRtRuntime.Initialize();
@@ -123,7 +123,7 @@ NuGet 不再收集大型 TensorRT、CUDA 或 cuDNN DLL。
 ```powershell
 .\tools\Pack-TensorRtRuntime.ps1 `
   -SourceDirectory ..\..\build\ninja-msvc-release\tensorrt_builder `
-  -OutputZip .\tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip
+  -OutputZip .\tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.2.zip
 ```
 
 `dotnet pack` 时会在控制台输出 `TensorRT native DLLs staged` 和

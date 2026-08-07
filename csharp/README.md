@@ -16,7 +16,7 @@ ONNX 转 TensorRT engine 使用独立的 `alanxinn.TensorRtOnnxBuilder` 类库�
 [../tensorrt_builder/README.md](../tensorrt_builder/README.md)。
 
 ```powershell
-dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.1
+dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.2
 ```
 
 ONNX 转 engine 的可运行示例见

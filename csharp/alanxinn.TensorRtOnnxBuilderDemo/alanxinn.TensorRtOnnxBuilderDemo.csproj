@@ -12,6 +12,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="alanxinn.TensorRtOnnxBuilder" Version="0.1.1" />
+    <PackageReference Include="alanxinn.TensorRtOnnxBuilder" Version="0.1.2" />
   </ItemGroup>
 </Project>

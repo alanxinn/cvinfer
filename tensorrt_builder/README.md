@@ -55,7 +55,7 @@ Release runtime ZIP。可在仓库根目录执行：
 ```powershell
 .\csharp\alanxinn.TensorRtOnnxBuilder\tools\Pack-TensorRtRuntime.ps1 `
   -SourceDirectory .\build\ninja-msvc-release\tensorrt_builder `
-  -OutputZip .\tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip
+  -OutputZip .\tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.2.zip
 ```
 
 ## C ABI

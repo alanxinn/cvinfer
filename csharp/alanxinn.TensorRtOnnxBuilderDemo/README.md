@@ -5,7 +5,7 @@
 
 ## 使用
 
-以下命令从仓库根目录执行。先构建 native builder，并打包版本 `0.1.1` 的本地 NuGet
+以下命令从仓库根目录执行。先构建 native builder，并打包版本 `0.1.2` 的本地 NuGet
 （Demo 会从 `csharp\alanxinn.TensorRtOnnxBuilder\bin\Release` 作为本地源还原）：
 
 ```powershell
@@ -21,7 +21,7 @@ NuGet 均要求 Windows x64；不要设置 `RuntimeIdentifier=win-x64`。
 默认下载地址为：
 
 ```text
-https://github.com/alanxinn/cvinfer/releases/download/v0.1.1/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip
+https://github.com/alanxinn/cvinfer/releases/download/v0.1.2/tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.2.zip
 ```
 
 也可以在程序启动时设置 `TensorRtRuntime.DownloadUrl`、`ExpectedSha256` 和

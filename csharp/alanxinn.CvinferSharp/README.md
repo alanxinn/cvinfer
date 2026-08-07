@@ -1,6 +1,6 @@
 # alanxinn.CvinferSharp
 
-版本：`0.1.0`
+版本：`0.1.1`
 
 `alanxinn.CvinferSharp` 是 `alanxinn_cvinfer.dll` 的 .NET C# 封装，支持 `net472`、`net6.0` 和 `net8.0`，提供：
 
@@ -14,7 +14,7 @@
 ## 安装
 
 ```powershell
-dotnet add package alanxinn.CvinferSharp --version 0.1.0
+dotnet add package alanxinn.CvinferSharp --version 0.1.1
 ```
 
 ## 使用示例
@@ -93,8 +93,8 @@ dotnet restore --force-evaluate
 
 ## 版本说明
 
-- NuGet 包版本：`0.1.0`
-- AssemblyVersion：`0.1.0.0`
-- FileVersion：`0.1.0.0`
+- NuGet 包版本：`0.1.1`
+- AssemblyVersion：`0.1.1.0`
+- FileVersion：`0.1.1.0`
 - TargetFrameworks：`net472`、`net6.0`、`net8.0`
 - 平台：`x64`

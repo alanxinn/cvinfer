@@ -61,7 +61,7 @@ var detection = result.GetDetection(0);
 `alanxinn.CvinferDemo` 通过本地 NuGet 包引用 `alanxinn.CvinferSharp`。native DLL 作为 NuGet runtime native 资产使用，不由项目脚本复制到应用输出根目录：
 
 ```text
-csharp/alanxinn.CvinferSharp/bin/Release/alanxinn.CvinferSharp.0.1.0.nupkg
+csharp/alanxinn.CvinferSharp/bin/Release/alanxinn.CvinferSharp.0.1.1.nupkg
 ```
 
 使用 Demo 前先生成类库包：
@@ -91,9 +91,9 @@ dotnet restore .\alanxinn.CvinferDemo\alanxinn.CvinferDemo.csproj
 
 ```text
 PackageId: alanxinn.CvinferSharp
-Version: 0.1.0
-AssemblyVersion: 0.1.0.0
-FileVersion: 0.1.0.0
+Version: 0.1.1
+AssemblyVersion: 0.1.1.0
+FileVersion: 0.1.1.0
 TargetFrameworks: net472; net6.0; net8.0
 PlatformTarget: x64
 ```

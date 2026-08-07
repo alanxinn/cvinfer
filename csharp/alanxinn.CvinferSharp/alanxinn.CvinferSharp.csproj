@@ -4,33 +4,61 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
     <RootNamespace>alanxinn</RootNamespace>
     <AssemblyName>alanxinn.CvinferSharp</AssemblyName>
     <PackageId>alanxinn.CvinferSharp</PackageId>
+
     <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <FileVersion>0.1.0.0</FileVersion>
     <InformationalVersion>0.1.0</InformationalVersion>
+
     <Authors>alanxinn</Authors>
     <Company>alanxinn</Company>
     <Product>alanxinn CvinferSharp</Product>
+
     <Description>.NET C# wrapper for the alanxinn_cvinfer TensorRT inference DLL.</Description>
     <AssemblyTitle>alanxinn.CvinferSharp</AssemblyTitle>
     <AssemblyDescription>C# managed wrapper for alanxinn_cvinfer.dll.</AssemblyDescription>
+
     <PackageTags>TensorRT;YOLO;YOLO11;CUDA;inference;CSharp;PInvoke</PackageTags>
     <PackageReleaseNotes>NuGet package for YOLO11 detection and segmentation inference with optional CUDA preprocessing and postprocessing acceleration.</PackageReleaseNotes>
+
+    <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <PlatformTarget>x64</PlatformTarget>
+
     <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin\alanxinn_cvinfer.dll')">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin</NativeRuntimeSource>
     <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == ''">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-release\bin</NativeRuntimeSource>
     <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64</NativeRuntimeDestination>
   </PropertyGroup>
+
   <ItemGroup>
     <None Remove="README.md" />
-    <None Include="README.md" Pack="true" PackagePath="README.md" />
+
+    <None Include="README.md"
+          Pack="true"
+          PackagePath="README.md" />
+
+    <None Include="..\..\LICENSE.txt"
+          Pack="true"
+          PackagePath="LICENSE.txt"
+          Visible="false" />
   </ItemGroup>
+
+  <Target Name="ValidatePackageLicenseFile"
+          BeforeTargets="Pack">
+    <Error Text="LICENSE.txt was not found. Expected path: $(MSBuildProjectDirectory)\..\..\LICENSE.txt"
+           Condition="!Exists('$(MSBuildProjectDirectory)\..\..\LICENSE.txt')" />
+  </Target>
 
   <Target Name="CopyAlanxinnNativeRuntime"
           BeforeTargets="Build;Pack"
@@ -45,14 +73,19 @@
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\cudart64_*.dll" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\opencv_world*.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeRuntimeSource)\opencv_world*d.dll" />
+
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer*.dll" />
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\nvinfer*.dll" />
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
     </ItemGroup>
+
     <Delete Files="@(AlanxinnNativeStaleFiles)"
             Condition="'@(AlanxinnNativeStaleFiles)' != ''" />
-    <MakeDir Directories="$(NativeRuntimeDestination)" Condition="'@(AlanxinnNativeRuntimeFiles)' != ''" />
+
+    <MakeDir Directories="$(NativeRuntimeDestination)"
+             Condition="'@(AlanxinnNativeRuntimeFiles)' != ''" />
+
     <Copy SourceFiles="@(AlanxinnNativeRuntimeFiles)"
           DestinationFolder="$(NativeRuntimeDestination)"
           SkipUnchangedFiles="true"
@@ -78,6 +111,7 @@
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\opencv_world*d.dll" />
+
       <TfmSpecificPackageFile Include="@(AlanxinnNativePackageFiles)"
                               Condition="Exists('$(NativeRuntimeDestination)')">
         <PackagePath>runtimes\win-x64\native\%(Filename)%(Extension)</PackagePath>

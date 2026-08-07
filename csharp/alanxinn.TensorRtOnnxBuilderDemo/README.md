@@ -21,7 +21,7 @@ NuGet 均要求 Windows x64；不要设置 `RuntimeIdentifier=win-x64`。
 默认下载地址为：
 
 ```text
-https://github.com/alanxinn/cvinfer/releases/download/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip
+https://github.com/alanxinn/cvinfer/releases/download/v0.1.1/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip
 ```
 
 也可以在程序启动时设置 `TensorRtRuntime.DownloadUrl`、`ExpectedSha256` 和

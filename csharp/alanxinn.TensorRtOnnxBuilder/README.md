@@ -22,7 +22,7 @@ engine 仍然与 TensorRT 版本、CUDA 版本和 GPU 架构相关，不能保�
 `runtimes/win-x64/native`、应用目录、本地缓存目录。找不到完整 runtime 时，默认下载：
 
 ```text
-https://github.com/alanxinn/cvinfer/releases/download/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip
+https://github.com/alanxinn/cvinfer/releases/download/v0.1.1/tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip
 ```
 
 缓存目录默认为 `%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.1.1\win-x64`。

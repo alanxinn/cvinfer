@@ -58,6 +58,31 @@ DLL，引用类库后即可加载 engine 并执行推理。
 optimization profile 0 的 `OPT` shape。C# Demo 默认使用
 `--preprocess auto --postprocess auto`。
 
+## TensorRT ONNX 转 Engine NuGet
+
+`alanxinn.TensorRtOnnxBuilder`（当前版本 `0.1.2`）NuGet 包地址：[alanxinn.TensorRtOnnxBuilder](https://www.nuget.org/packages/alanxinn.TensorRtOnnxBuilder)  是独立的 Windows x64 C# 类库，
+通过 `alanxinn_tensorrt_builder.dll` 直接调用 TensorRT C++ API，将 ONNX 模型转换为
+serialized TensorRT engine，不启动 `trtexec.exe`。
+
+安装：
+
+```powershell
+dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.2
+```
+
+NuGet 包只包含 C# 程序集和 builder DLL。首次转换时，如果本地缺少 TensorRT/CUDA
+Runtime，程序会从 GitHub Release `v0.1.2` 下载并缓存：
+
+```text
+https://github.com/alanxinn/cvinfer/releases/download/v0.1.2/tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.2.zip
+```
+
+Runtime 默认缓存到 `%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.1.2\win-x64`，
+也支持通过 `TensorRtRuntime.DownloadUrl`、`CacheDirectory` 和 `ExpectedSha256` 自定义。
+完整参数和 ONNX 转换示例见
+[TensorRtOnnxBuilder README](csharp/alanxinn.TensorRtOnnxBuilder/README.md)；命令行 Demo
+见 [TensorRtOnnxBuilderDemo README](csharp/alanxinn.TensorRtOnnxBuilderDemo/README.md)。
+
 ## CPU 前后处理基准测试
 
 测试日期：2026-08-06  

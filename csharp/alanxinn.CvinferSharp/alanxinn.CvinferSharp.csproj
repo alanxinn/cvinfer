@@ -71,12 +71,15 @@
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvinfer.dll"
                                   Condition="Exists('$(NativeRuntimeSource)\nvinfer.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\cudart64_*.dll" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\zlibwapi.dll"
+                                  Condition="Exists('$(NativeRuntimeSource)\zlibwapi.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\opencv_world*.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeRuntimeSource)\opencv_world*d.dll" />
 
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer*.dll" />
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\nvinfer*.dll" />
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
+      <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\zlibwapi.dll" />
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
     </ItemGroup>
 
@@ -90,6 +93,11 @@
           DestinationFolder="$(NativeRuntimeDestination)"
           SkipUnchangedFiles="true"
           Condition="'@(AlanxinnNativeRuntimeFiles)' != ''" />
+
+
+    <Message Importance="High"
+             Text="Native runtime DLLs selected: @(AlanxinnNativeRuntimeFiles)"
+             Condition="'@(AlanxinnNativeRuntimeFiles)' != ''" />
   </Target>
 
   <PropertyGroup>
@@ -109,6 +117,8 @@
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer.dll"
                                   Condition="Exists('$(NativeRuntimeDestination)\nvinfer.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\zlibwapi.dll"
+                                  Condition="Exists('$(NativeRuntimeDestination)\zlibwapi.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\opencv_world*d.dll" />
 
@@ -117,6 +127,13 @@
         <PackagePath>runtimes\win-x64\native\%(Filename)%(Extension)</PackagePath>
       </TfmSpecificPackageFile>
     </ItemGroup>
+
+    <Message Importance="High"
+             Text="NuGet native DLLs: @(AlanxinnNativePackageFiles)"
+             Condition="'@(AlanxinnNativePackageFiles)' != ''" />
+    <Message Importance="High"
+             Text="NuGet native package path: runtimes\win-x64\native\%(AlanxinnNativePackageFiles.Filename)%(AlanxinnNativePackageFiles.Extension)"
+             Condition="'@(AlanxinnNativePackageFiles)' != ''" />
   </Target>
 
   <Target Name="ValidateAlanxinnNativeRuntime"

@@ -69,6 +69,7 @@ native/win-x64/alanxinn_cvinfer.dll
 native/win-x64/alanxinn_cvinfer_cuda.dll（可选，启用 CUDA 前后处理）
 native/win-x64/nvinfer.dll
 native/win-x64/cudart64_*.dll
+native/win-x64/zlibwapi.dll
 native/win-x64/opencv_world*.dll（仅保留 Release 版本）
 ```
 

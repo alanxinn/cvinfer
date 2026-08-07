@@ -4,7 +4,7 @@
 
 ```text
 alanxinn.CvinferSharp/  C# 类库，封装 alanxinn_cvinfer.dll 的 P/Invoke 和结果对象
-alanxinn.CvinferDemo/   控制台 Demo，通过 alanxinn.CvinferSharp 调用模型
+alanxinn.CvinferDemo/   控制台 Demo，通过 alanxinn.CvinferSharp 调用模型，使用 OpenCvSharp `Mat` 读取、传递和绘制图像
 ```
 
 ## 使用前准备
@@ -18,6 +18,7 @@ runtimes/win-x64/native/
 ├─ alanxinn_cvinfer_cuda.dll（可选）
 ├─ nvinfer.dll
 ├─ cudart64_*.dll
+├─ zlibwapi.dll
 └─ opencv_world*.dll
 ```
 
@@ -54,6 +55,8 @@ var detection = result.GetDetection(0);
 ```
 
 分割模型使用 `GetSegmentation()` 和 `CopyMask()` 获取 mask。类库负责句柄释放、UTF-8 路径转换、错误码转换和非托管缓冲区交互。
+
+`alanxinn.CvinferDemo` 使用 OpenCvSharp `Mat` 直接读取 BGR 图像，并通过 Mat 的原生地址调用推理接口，不再经过 `Bitmap` 转换。
 
 `alanxinn.CvinferDemo` 通过本地 NuGet 包引用 `alanxinn.CvinferSharp`。native DLL 作为 NuGet runtime native 资产使用，不由项目脚本复制到应用输出根目录：
 

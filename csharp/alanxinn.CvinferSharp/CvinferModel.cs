@@ -56,18 +56,25 @@ public sealed class CvinferModel : IDisposable
         if (width <= 0 || height <= 0 || channels < 3) throw new ArgumentOutOfRangeException(nameof(width));
         var required = checked(width * height * channels);
         if (bgr.Length < required) throw new ArgumentException("BGR buffer is smaller than width*height*channels", nameof(bgr));
-        ThrowIfDisposed();
         var pin = GCHandle.Alloc(bgr, GCHandleType.Pinned);
         try
         {
-            NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_model_infer_bgr(
-                _handle, pin.AddrOfPinnedObject(), width, height, channels, out var result));
-            return new CvinferResult(result, ModelType);
+            return InferBgr(pin.AddrOfPinnedObject(), width, height, channels);
         }
         finally
         {
             pin.Free();
         }
+    }
+
+    public CvinferResult InferBgr(IntPtr bgr, int width, int height, int channels = 3)
+    {
+        if (bgr == IntPtr.Zero) throw new ArgumentNullException(nameof(bgr));
+        if (width <= 0 || height <= 0 || channels < 3) throw new ArgumentOutOfRangeException(nameof(width));
+        ThrowIfDisposed();
+        NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_model_infer_bgr(
+            _handle, bgr, width, height, channels, out var result));
+        return new CvinferResult(result, ModelType);
     }
 
     public void Dispose()

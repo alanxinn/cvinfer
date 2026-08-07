@@ -7,11 +7,10 @@
     <RootNamespace>alanxinn</RootNamespace>
     <AssemblyName>alanxinn.CvinferDemo</AssemblyName>
     <PlatformTarget>x64</PlatformTarget>
-    <UseWindowsForms>true</UseWindowsForms>
     <RestoreAdditionalProjectSources>$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\Release</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="alanxinn.CvinferSharp" Version="0.1.0" />
-    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+    <PackageReference Include="OpenCvSharp4.Windows" Version="4.13.0.20260627" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.23)
+cmake_minimum_required(VERSION 3.23)
 
 project(alanxinn_cvinfer LANGUAGES CXX)
 
@@ -111,7 +111,8 @@ cvinfer_find_existing_dir(CVINFER_OPENCV_BIN_DIR
 file(GLOB CVINFER_RUNTIME_DLLS CONFIGURE_DEPENDS
   "${CVINFER_OPENCV_BIN_DIR}/opencv_world*.dll"
   "${TENSORRT_ROOT}/lib/nvinfer.dll"
-  "${CUDA_ROOT}/bin/cudart64_*.dll")
+  "${CUDA_ROOT}/bin/cudart64_*.dll"
+  "${CUDA_ROOT}/bin/zlibwapi.dll")
 list(FILTER CVINFER_RUNTIME_DLLS EXCLUDE REGEX "d\\.dll$")
 
 file(GLOB CVINFER_DELAY_LOAD_DLLS CONFIGURE_DEPENDS

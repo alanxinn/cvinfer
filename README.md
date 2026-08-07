@@ -26,6 +26,60 @@ alanxinn_cvinfer_cuda.dll
 
 只有使用私有 backend 构建主库时才启用该路径；公开 CPU 构建不会链接或加载 CUDA backend。
 
+## NuGet 开箱即用
+
+C# 应用可以直接从 [NuGet 包页面](https://www.nuget.org/packages/alanxinn.CvinferSharp) 下载并引用 `alanxinn.CvinferSharp` NuGet 包，无需在开发机上
+额外安装或配置复杂的 CUDA、TensorRT、OpenCV 开发环境。NuGet 包已经包含
+运行所需的 `alanxinn_cvinfer.dll`、TensorRT、CUDA Runtime 和 OpenCV Runtime
+DLL，引用类库后即可加载 engine 并执行推理。
+当前 `alanxinn.CvinferSharp` NuGet 包对应 CUDA Runtime 11.8 和 TensorRT Runtime 8.1.6，相关运行库已随包提供。
+
+运行时仍需要满足以下条件：
+
+- Windows x64；
+- 已安装兼容的 NVIDIA 显卡驱动；
+- 准备对应的 TensorRT engine 文件和输入图像；
+- 如果显式选择 CUDA 前处理或后处理，需要使用包含
+  `alanxinn_cvinfer_cuda.dll` 的私有 CUDA NuGet 包；使用 `auto` 时无需该 DLL。
+
+当前 NuGet/C# Demo 支持的模型如下：
+
+| 模型 | 类型参数 | 输出 |
+| --- | --- | --- |
+| YOLO11 Detection | `det` | 检测框、类别、置信度 |
+| YOLO11 Segmentation | `seg` | 检测框、类别、置信度和 Mask |
+
+输入宽高由 TensorRT engine 自动读取，固定输入使用固定 shape，动态输入使用
+optimization profile 0 的 `OPT` shape。C# Demo 默认使用
+`--preprocess auto --postprocess auto`。
+
+## CPU 前后处理基准测试
+
+测试日期：2026-08-06  
+测试设备：NVIDIA GeForce RTX 4060（8 GB，驱动 591.86）；CPU 为 Intel 12490F。TensorRT 推理使用该 NVIDIA GPU，
+前处理和后处理均使用 CPU。
+
+测试条件：
+
+```text
+输入图像：810x1080
+warmup：100 次
+正式统计：1000 次
+检测模型：yolo11n.engine
+分割模型：yolo11n-seg.engine
+```
+
+| 模型 | 阶段 | 平均耗时（ms） | 最小耗时（ms） | 最大耗时（ms） |
+| --- | --- | ---: | ---: | ---: |
+| `yolo11n.engine` | 前处理 | 1.9984 | 1.7884 | 3.0753 |
+| `yolo11n.engine` | TensorRT 推理 | 3.5155 | 2.8160 | 5.9006 |
+| `yolo11n.engine` | 后处理 | 2.0024 | 1.7712 | 2.8704 |
+| `yolo11n.engine` | 总耗时 | 8.3656 | 7.2045 | 11.5039 |
+| `yolo11n-seg.engine` | 前处理 | 1.9867 | 1.7937 | 3.6404 |
+| `yolo11n-seg.engine` | TensorRT 推理 | 4.8961 | 4.2666 | 8.2253 |
+| `yolo11n-seg.engine` | 后处理 | 4.0293 | 3.6666 | 8.6139 |
+| `yolo11n-seg.engine` | 总耗时 | 11.7439 | 10.6901 | 19.4811 |
+
 ## 模块文档
 
 - [core：TensorRT 核心库](core/README.md)
@@ -58,9 +112,9 @@ test/                     本地测试和生成文件目录
 cmake -S . -B build/public-release `
   -G Ninja `
   -DCMAKE_BUILD_TYPE=Release `
-  -DCUDA_ROOT="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8" `
-  -DTENSORRT_ROOT="C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-8.6.1.6_cuda-11.8" `
-  -DOPENCV_ROOT="E:/opencv"
+  -DCUDA_ROOT="C:/your/path/CUDA/v11.8" `
+  -DTENSORRT_ROOT="C:/your/path/TensorRT-8.1.6_cuda-11.8" `
+  -DOPENCV_ROOT="C:/your/path/opencv"
 cmake --build build/public-release
 ```
 
@@ -72,12 +126,12 @@ cmake --build build/public-release
 cmake -S . -B build/private-cuda-release `
   -G Ninja `
   -DBUILD_CUDA_BACKEND=ON `
-  -DALANXINN_CUDA_BACKEND_DIR="E:/private/alanxinn-cuda-backend" `
-  -DALANXINN_PUBLIC_YOLO_INCLUDE_DIR="E:/public/alanxinn-cvinfer/yolo/include" `
-  -DALANXINN_PUBLIC_CORE_INCLUDE_DIR="E:/public/alanxinn-cvinfer/core/include" `
-  -DCUDA_ROOT="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8" `
-  -DTENSORRT_ROOT="C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-8.6.1.6_cuda-11.8" `
-  -DOPENCV_ROOT="E:/opencv"
+  -DALANXINN_CUDA_BACKEND_DIR="C:/your/private/cuda_backend" `
+  -DALANXINN_PUBLIC_YOLO_INCLUDE_DIR="C:/your/project/cvinfer/yolo/include" `
+  -DALANXINN_PUBLIC_CORE_INCLUDE_DIR="C:/your/project/cvinfer/core/include" `
+  -DCUDA_ROOT="C:/your/path/CUDA/v11.8" `
+  -DTENSORRT_ROOT="C:/your/path/TensorRT-8.1.6_cuda-11.8" `
+  -DOPENCV_ROOT="C:/your/path/opencv"
 cmake --build build/private-cuda-release
 ```
 
@@ -136,36 +190,3 @@ alanxinn_cvinfer_cuda.lib
 
 详细接口、配置和使用方式请进入上面的模块文档。
 
-## CPU 前后处理基准测试
-
-测试日期：2026-08-06  
-测试设备：NVIDIA GeForce RTX 4060（8 GB，驱动 591.86）；CPU 为 Intel 12490F。TensorRT 推理使用该 NVIDIA GPU，
-前处理和后处理均使用 CPU。
-
-测试条件：
-
-```text
-输入图像：810x1080
-warmup：100 次
-正式统计：1000 次
-检测模型：yolo11n.engine
-分割模型：yolo11n-seg.engine
-```
-
-检测模型 `yolo11n.engine`：
-
-```text
-preprocess avg=1.9984 min=1.7884 max=3.0753 ms
-inference  avg=3.5155 min=2.8160 max=5.9006 ms
-postprocess avg=2.0024 min=1.7712 max=2.8704 ms
-total      avg=8.3656 min=7.2045 max=11.5039 ms
-```
-
-分割模型 `yolo11n-seg.engine`：
-
-```text
-preprocess avg=1.9867 min=1.7937 max=3.6404 ms
-inference  avg=4.8961 min=4.2666 max=8.2253 ms
-postprocess avg=4.0293 min=3.6666 max=8.6139 ms
-total      avg=11.7439 min=10.6901 max=19.4811 ms
-```

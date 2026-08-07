@@ -4,6 +4,11 @@
 
 本项目将 TensorRT 通用推理能力、YOLO 模型适配、C ABI 动态库和 C# NuGet 封装分层组织。新增模型只需要复用 `core`，实现模型自己的前处理和输出解码，不需要重复编写 TensorRT runtime、context、stream 和显存管理代码。
 
+ONNX 转 engine 由独立的 `tensorrt_builder` C++ DLL 和
+`alanxinn.TensorRtOnnxBuilder` C# NuGet 类库负责；该路径直接使用
+`NvOnnxParser`/`IBuilder`，不依赖 `trtexec.exe`。NuGet 包只包含 builder DLL，
+大型 TensorRT/CUDA runtime 首次调用时从 GitHub Release 下载并缓存。
+
 ```text
 C# / C++ 外部应用
         ↓
@@ -87,11 +92,13 @@ warmup：100 次
 - [yolo：YOLO 检测与分割适配库](yolo/README.md)
 - [api：C ABI 动态库接口](api/README.md)
 - [csharp：C# 类库与 Demo](csharp/README.md)
+- [独立 C# TensorRT ONNX 转 engine](csharp/alanxinn.TensorRtOnnxBuilder/README.md)
 
 ## 目录结构
 
 ```text
 core/                     TensorRT 通用推理、Tensor、CUDA stream 和设备内存
+tensorrt_builder/         TensorRT C++ ONNX parser/builder DLL
 yolo/                     YOLO 前处理、检测/分割解码、NMS、Mask 和 Demo
 api/                      alanxinn_cvinfer.dll 的稳定 C ABI
 csharp/                   C# 类库、NuGet 包和 Demo
@@ -99,7 +106,12 @@ private/cuda_backend/     私有 CUDA 前处理/后处理实现，不提交公�
 test/                     本地测试和生成文件目录
 ```
 
-公开仓库只维护 `core`、`yolo`、`api` 和 `csharp`。`private/cuda_backend`
+`tensorrt_builder` 的说明见
+[tensorrt_builder/README.md](tensorrt_builder/README.md)；C# API 和可运行 Demo 见
+[csharp/alanxinn.TensorRtOnnxBuilder/README.md](csharp/alanxinn.TensorRtOnnxBuilder/README.md)
+及 [csharp/alanxinn.TensorRtOnnxBuilderDemo/README.md](csharp/alanxinn.TensorRtOnnxBuilderDemo/README.md)。
+
+公开仓库只维护 `core`、`tensorrt_builder`、`yolo`、`api` 和 `csharp`。`private/cuda_backend`
 应作为独立私有仓库或本地私有 checkout 管理，根目录 `.gitignore` 已忽略该目录。
 
 ## 构建
@@ -139,6 +151,11 @@ cmake --build build/private-cuda-release
 项目使用 CPU stub 编译，显式选择 `Cuda` 会返回 backend 缺失错误；启用私有
 backend 后，`alanxinn_cvinfer_cuda.dll` 通过延迟加载提供 CUDA 加速。生成的
 CUDA DLL 会复制到当前构建目录的 `bin/`，导入库位于 `lib/`。
+ONNX 转 engine 所需的 `alanxinn_tensorrt_builder.dll` 及 TensorRT/CUDA 运行时 DLL
+会单独复制到当前构建目录的 `tensorrt_builder/`，避免与常规运行时 DLL 冲突。
+转换器部署白名单为 `nvinfer.dll`、`nvinfer_plugin.dll`、`nvonnxparser.dll`、
+`cudart64_110.dll`、`cublas64_11.dll`、`cublasLt64_11.dll`、`cudnn64_8.dll` 和
+`zlibwapi.dll`。
 
 也可以使用预设：
 
@@ -157,6 +174,7 @@ alanxinn_cvinfer.dll
 alanxinn_cvinfer.lib
 alanxinn_cvinfer_core.lib
 alanxinn_cvinfer_yolo.lib
+alanxinn_tensorrt_builder.dll
 alanxinn_yolo11_det_core_demo.exe
 alanxinn_yolo11_seg_core_demo.exe
 ```

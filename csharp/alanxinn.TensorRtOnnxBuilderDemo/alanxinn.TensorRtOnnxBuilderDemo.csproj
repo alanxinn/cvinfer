@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>alanxinn.TensorRtOnnxBuilderDemo</RootNamespace>
+    <AssemblyName>alanxinn.TensorRtOnnxBuilderDemo</AssemblyName>
+    <PlatformTarget>x64</PlatformTarget>
+    <RestoreAdditionalProjectSources Condition="Exists('$(MSBuildProjectDirectory)\..\alanxinn.TensorRtOnnxBuilder\bin\Release')">$(MSBuildProjectDirectory)\..\alanxinn.TensorRtOnnxBuilder\bin\Release</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="alanxinn.TensorRtOnnxBuilder" Version="0.1.1" />
+  </ItemGroup>
+</Project>

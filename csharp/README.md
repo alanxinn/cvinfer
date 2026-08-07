@@ -1,11 +1,29 @@
 # C# 类库与调用 Demo
 
-目录包含两个项目：
+目录包含四个项目：
 
 ```text
 alanxinn.CvinferSharp/  C# 类库，封装 alanxinn_cvinfer.dll 的 P/Invoke 和结果对象
 alanxinn.CvinferDemo/   控制台 Demo，通过 alanxinn.CvinferSharp 调用模型，使用 OpenCvSharp `Mat` 读取、传递和绘制图像
+alanxinn.TensorRtOnnxBuilder/  独立的 ONNX 转 TensorRT engine 类库和 NuGet 包
+alanxinn.TensorRtOnnxBuilderDemo/  使用上述 NuGet 包转换 ONNX 到 TensorRT engine 的控制台 Demo
 ```
+
+ONNX 转 TensorRT engine 使用独立的 `alanxinn.TensorRtOnnxBuilder` 类库和 NuGet
+包；它通过 `alanxinn_tensorrt_builder.dll` 调用 TensorRT C++ API，不启动
+`trtexec.exe`。实现结论和 native 依赖清单见
+[alanxinn.TensorRtOnnxBuilder/README.md](alanxinn.TensorRtOnnxBuilder/README.md) 和
+[../tensorrt_builder/README.md](../tensorrt_builder/README.md)。
+
+```powershell
+dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.1
+```
+
+ONNX 转 engine 的可运行示例见
+[alanxinn.TensorRtOnnxBuilderDemo/README.md](alanxinn.TensorRtOnnxBuilderDemo/README.md)。
+该包只在应用输出的 `runtimes/win-x64/native` 目录放置小型 builder DLL，不复制到输出根目录。
+大型 TensorRT/CUDA runtime 首次调用时从 GitHub Release 下载到用户本地缓存，也可以提前
+手动部署用于离线运行。
 
 ## 使用前准备
 

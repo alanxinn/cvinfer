@@ -143,7 +143,13 @@ endfunction()
 
 
 option(BUILD_CVINFER_DLL "Build C# compatible cvinfer DLL" ON)
+option(BUILD_TRT_ONNX_BUILDER_DLL
+  "Build the TensorRT C++ ONNX-to-engine builder DLL"
+  ON)
 add_subdirectory(core)
+if(BUILD_TRT_ONNX_BUILDER_DLL)
+  add_subdirectory(tensorrt_builder)
+endif()
 if(BUILD_CUDA_BACKEND)
   if(NOT EXISTS "${ALANXINN_CUDA_BACKEND_DIR}/CMakeLists.txt")
     message(FATAL_ERROR

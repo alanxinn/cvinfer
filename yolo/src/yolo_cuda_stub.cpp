@@ -1,4 +1,3 @@
-#define CVINFER_CUDA_STATIC
 #include "yolo/yolo_cuda.h"
 
 #include <stdexcept>

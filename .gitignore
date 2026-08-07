@@ -53,3 +53,4 @@ csharp/**/bin/
 csharp/**/obj/
 
 private/
+package/

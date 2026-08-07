@@ -1,0 +1,131 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net472;net6.0;net8.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <RootNamespace>alanxinn.TensorRt</RootNamespace>
+    <AssemblyName>alanxinn.TensorRtOnnxBuilder</AssemblyName>
+    <PackageId>alanxinn.TensorRtOnnxBuilder</PackageId>
+
+    <Version>0.1.1</Version>
+    <AssemblyVersion>0.1.1.0</AssemblyVersion>
+    <FileVersion>0.1.1.0</FileVersion>
+    <InformationalVersion>0.1.1</InformationalVersion>
+
+    <Authors>alanxinn</Authors>
+    <Company>alanxinn</Company>
+    <Product>alanxinn TensorRtOnnxBuilder</Product>
+    <Description>Managed C# API and native TensorRT C++ builder for converting ONNX models to serialized TensorRT engines.</Description>
+    <AssemblyTitle>alanxinn.TensorRtOnnxBuilder</AssemblyTitle>
+    <AssemblyDescription>C# P/Invoke wrapper for the native TensorRT ONNX builder DLL.</AssemblyDescription>
+    <PackageTags>TensorRT;ONNX;engine;builder;CUDA;CSharp;PInvoke;NvOnnxParser</PackageTags>
+    <PackageReleaseNotes>Managed ONNX to TensorRT engine builder. Large TensorRT/CUDA runtime DLLs are downloaded from a versioned GitHub Release on first use.</PackageReleaseNotes>
+
+    <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\tensorrt_builder\alanxinn_tensorrt_builder.dll')">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\tensorrt_builder</NativeRuntimeSource>
+    <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == ''">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-release\tensorrt_builder</NativeRuntimeSource>
+    <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64</NativeRuntimeDestination>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.IO.Compression.FileSystem"
+               Condition="'$(TargetFramework)' == 'net472'" />
+    <Reference Include="System.Net.Http"
+               Condition="'$(TargetFramework)' == 'net472'" />
+    <None Remove="README.md" />
+    <None Include="README.md"
+          Pack="true"
+          PackagePath="README.md" />
+    <None Include="..\..\LICENSE.txt"
+          Pack="true"
+          PackagePath="LICENSE.txt"
+          Visible="false" />
+  </ItemGroup>
+
+  <Target Name="CopyTensorRtBuilderNativeRuntime"
+          BeforeTargets="Build;Pack"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <ItemGroup>
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvinfer.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\nvinfer.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvinfer_plugin.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\nvinfer_plugin.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvonnxparser.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\nvonnxparser.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\cudart64_110.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\cudart64_110.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\cublas64_11.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\cublas64_11.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\cublasLt64_11.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\cublasLt64_11.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\cudnn64_8.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\cudnn64_8.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\zlibwapi.dll"
+                                         Condition="Exists('$(NativeRuntimeSource)\zlibwapi.dll')" />
+
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_tensorrt_builder.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\nvinfer*.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\nvonnxparser*.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\cublas64_*.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\cublasLt64_*.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\nvrtc64_*.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\nvrtc-builtins64_*.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\cudnn*.dll" />
+      <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\zlibwapi.dll" />
+    </ItemGroup>
+
+    <Delete Files="@(TensorRtBuilderNativeStaleFiles)"
+            Condition="'@(TensorRtBuilderNativeStaleFiles)' != ''" />
+    <MakeDir Directories="$(NativeRuntimeDestination)"
+             Condition="'@(TensorRtBuilderNativeRuntimeFiles)' != ''" />
+    <Copy SourceFiles="@(TensorRtBuilderNativeRuntimeFiles)"
+          DestinationFolder="$(NativeRuntimeDestination)"
+          SkipUnchangedFiles="true"
+          Condition="'@(TensorRtBuilderNativeRuntimeFiles)' != ''" />
+    <Message Importance="High"
+             Text="TensorRT native DLLs staged: @(TensorRtBuilderNativeRuntimeFiles->'%(Filename)%(Extension)')"
+             Condition="'@(TensorRtBuilderNativeRuntimeFiles)' != ''" />
+  </Target>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>
+      $(TargetsForTfmSpecificContentInPackage);PackTensorRtBuilderNativeRuntime
+    </TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="PackTensorRtBuilderNativeRuntime"
+          DependsOnTargets="CopyTensorRtBuilderNativeRuntime"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <ItemGroup>
+      <TensorRtBuilderNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_tensorrt_builder.dll"
+                                         Condition="Exists('$(NativeRuntimeDestination)\alanxinn_tensorrt_builder.dll')" />
+      <TfmSpecificPackageFile Include="@(TensorRtBuilderNativePackageFiles)">
+        <PackagePath>runtimes\win-x64\native\%(Filename)%(Extension)</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+    <Message Importance="High"
+             Text="TensorRT NuGet native DLLs: @(TensorRtBuilderNativePackageFiles->'%(Filename)%(Extension)')"
+             Condition="'@(TensorRtBuilderNativePackageFiles)' != ''" />
+  </Target>
+
+  <Target Name="ValidateTensorRtBuilderNativeRuntime"
+          BeforeTargets="Pack"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <Error Text="alanxinn_tensorrt_builder.dll was not found in '$(NativeRuntimeSource)'. Build the C++ TensorRT builder first."
+           Condition="!Exists('$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll')" />
+  </Target>
+</Project>

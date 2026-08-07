@@ -18,7 +18,7 @@ namespace alanxinn.TensorRt;
 public static class TensorRtRuntime
 {
     private const string PackageVersion = "0.1.1";
-    private const string RuntimeArchiveName = "tensorrt8.1.6-cuda11.8-runtime-win-x64-0.1.1.zip";
+    private const string RuntimeArchiveName = "tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.1.zip";
     private const string DefaultDownloadUrl =
         "https://github.com/alanxinn/cvinfer/releases/download/v0.1.1/" +
         RuntimeArchiveName;

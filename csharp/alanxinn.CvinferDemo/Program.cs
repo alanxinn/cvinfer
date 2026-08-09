@@ -14,14 +14,18 @@ try
     parsed = ParseArguments(args);
     modelTypeName = GetRequiredOption(parsed.Options, "type");
     if (!modelTypeName.Equals("det", StringComparison.OrdinalIgnoreCase) &&
-        !modelTypeName.Equals("seg", StringComparison.OrdinalIgnoreCase))
-        throw new ArgumentException("--type must be det or seg");
+        !modelTypeName.Equals("seg", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("rf-detr", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("rfdetr", StringComparison.OrdinalIgnoreCase))
+        throw new ArgumentException("--type must be det, seg or rf-detr");
     enginePath = GetRequiredOption(parsed.Options, "model");
     imagePath = GetRequiredOption(parsed.Options, "img");
     resultPath = GetOption(parsed.Options, "output", "cvinfer_result.jpg");
     modelType = modelTypeName.Equals("seg", StringComparison.OrdinalIgnoreCase)
         ? CvinferModelType.YoloSegmentation
-        : CvinferModelType.YoloDetection;
+        : (modelTypeName.Equals("rf-detr", StringComparison.OrdinalIgnoreCase) || modelTypeName.Equals("rfdetr", StringComparison.OrdinalIgnoreCase)
+            ? CvinferModelType.RfDetrDetection
+            : CvinferModelType.YoloDetection);
     config = new CvinferConfig
     {
         ClassCount = ParseIntOption(parsed.Options, "classes", 80),

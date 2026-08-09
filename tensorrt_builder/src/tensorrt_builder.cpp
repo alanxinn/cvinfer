@@ -404,7 +404,22 @@ trt_builder_build_onnx_with_progress(
         }
         progress.report(8, 50, "Builder configuration created");
         builder_config->setMaxWorkspaceSize(static_cast<std::size_t>(config.workspace_mib) * 1024U * 1024U);
-        if (config.precision == TRT_BUILDER_PRECISION_FP16)
+        // TensorRT 8.6 can build this transformer graph with FP16, but the
+        // resulting RF-DETR classification logits are numerically corrupted
+        // (all scores collapse below the postprocess threshold).  Detect the
+        // exported RF-DETR contract and keep it in FP32 for correctness.
+        bool is_rf_detr = false;
+        for (int output_index = 0; output_index < network->getNbOutputs(); ++output_index) {
+            const auto* output = network->getOutput(output_index);
+            const auto dims = output ? output->getDimensions() : nvinfer1::Dims{};
+            const int last = dims.nbDims > 0 ? dims.d[dims.nbDims - 1] : 0;
+            if ((output && output->getName() && std::string(output->getName()) == "labels") || last == 91) {
+                is_rf_detr = true;
+                break;
+            }
+        }
+        const bool use_fp16 = config.precision == TRT_BUILDER_PRECISION_FP16 && !is_rf_detr;
+        if (use_fp16)
             builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
         else if (config.precision == TRT_BUILDER_PRECISION_INT8)
             builder_config->setFlag(nvinfer1::BuilderFlag::kINT8);

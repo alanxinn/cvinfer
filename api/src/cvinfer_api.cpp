@@ -1,6 +1,7 @@
 #include "cvinfer/cvinfer_api.h"
 
 #include "yolo/yolo.h"
+#include "rf_detr/rf_detr.h"
 
 #include <algorithm>
 #include <cstring>
@@ -14,12 +15,14 @@ struct cvinfer_model {
     cvinfer_model_type_t type{};
     std::unique_ptr<cvinfer::yolo::Detector> detector;
     std::unique_ptr<cvinfer::yolo::Segmentor> segmentor;
+    std::unique_ptr<cvinfer::rf_detr::Detector> rf_detr_detector;
 };
 
 struct cvinfer_result {
     cvinfer_model_type_t type{};
     std::vector<cvinfer::yolo::Detection> detections;
     std::vector<cvinfer::yolo::Segmentation> segmentations;
+    std::vector<cvinfer::rf_detr::Detection> rf_detr_detections;
     cvinfer::yolo::Timing timing{};
 };
 
@@ -60,6 +63,15 @@ cvinfer::yolo::ComputeBackend parse_backend(int32_t value) {
     }
 }
 
+cvinfer::rf_detr::ComputeBackend parse_rf_detr_backend(int32_t value) {
+    switch (value) {
+    case CVINFER_BACKEND_AUTO: return cvinfer::rf_detr::ComputeBackend::Auto;
+    case CVINFER_BACKEND_CPU: return cvinfer::rf_detr::ComputeBackend::Cpu;
+    case CVINFER_BACKEND_CUDA: return cvinfer::rf_detr::ComputeBackend::Cuda;
+    default: throw std::invalid_argument("Unsupported compute backend");
+    }
+}
+
 cvinfer::yolo::Config make_config_v2(const cvinfer_model_config_v2_t* source) {
     cvinfer::yolo::Config config;
     if (!source) return config;
@@ -75,6 +87,29 @@ cvinfer::yolo::Config make_config_v2(const cvinfer_model_config_v2_t* source) {
     if (source->input_name) config.input_name = source->input_name;
     if (source->output_name) config.output_name = source->output_name;
     if (source->prototype_name) config.prototype_name = source->prototype_name;
+    return config;
+}
+
+cvinfer::rf_detr::Config make_rf_detr_config(const cvinfer_model_config_t* source) {
+    cvinfer::rf_detr::Config config;
+    if (!source) return config;
+    if (source->input_width > 0) config.input_width = source->input_width;
+    if (source->input_height > 0) config.input_height = source->input_height;
+    if (source->class_count > 0) config.class_count = source->class_count;
+    if (source->confidence_threshold >= 0.0F) config.confidence_threshold = source->confidence_threshold;
+    if (source->nms_threshold >= 0.0F) config.nms_threshold = source->nms_threshold;
+    config.class_agnostic_nms = source->class_agnostic_nms != 0;
+    if (source->input_name) config.input_name = source->input_name;
+    if (source->output_name) config.output_name = source->output_name;
+    return config;
+}
+
+cvinfer::rf_detr::Config make_rf_detr_config_v2(const cvinfer_model_config_v2_t* source) {
+    auto config = make_rf_detr_config(reinterpret_cast<const cvinfer_model_config_t*>(source));
+    if (source) {
+        config.preprocess_backend = parse_rf_detr_backend(source->preprocess_backend);
+        config.postprocess_backend = parse_rf_detr_backend(source->postprocess_backend);
+    }
     return config;
 }
 cvinfer_status_t handle_exception(const std::exception& error) {
@@ -134,6 +169,8 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create(
             instance->detector = std::make_unique<cvinfer::yolo::Detector>(engine_path, yolo_config);
         } else if (model_type == CVINFER_MODEL_YOLO_SEG) {
             instance->segmentor = std::make_unique<cvinfer::yolo::Segmentor>(engine_path, yolo_config);
+        } else if (model_type == CVINFER_MODEL_RF_DETR_DET) {
+            instance->rf_detr_detector = std::make_unique<cvinfer::rf_detr::Detector>(engine_path, make_rf_detr_config(config));
         } else {
             set_error("Unsupported model type");
             return CVINFER_STATUS_UNSUPPORTED;
@@ -161,6 +198,8 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create_v2(
             instance->detector = std::make_unique<cvinfer::yolo::Detector>(engine_path, yolo_config);
         } else if (model_type == CVINFER_MODEL_YOLO_SEG) {
             instance->segmentor = std::make_unique<cvinfer::yolo::Segmentor>(engine_path, yolo_config);
+        } else if (model_type == CVINFER_MODEL_RF_DETR_DET) {
+            instance->rf_detr_detector = std::make_unique<cvinfer::rf_detr::Detector>(engine_path, make_rf_detr_config_v2(config));
         } else {
             set_error("Unsupported model type");
             return CVINFER_STATUS_UNSUPPORTED;
@@ -195,6 +234,10 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_infer_bgr(
         } else if (model->type == CVINFER_MODEL_YOLO_SEG && model->segmentor) {
             output->segmentations = model->segmentor->infer_image(bgr, width, height, channels);
             output->timing = model->segmentor->last_timing();
+        } else if (model->type == CVINFER_MODEL_RF_DETR_DET && model->rf_detr_detector) {
+            output->rf_detr_detections = model->rf_detr_detector->infer_image(bgr, width, height, channels);
+            const auto& timing = model->rf_detr_detector->last_timing();
+            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
         } else {
             set_error("Invalid model handle");
             return CVINFER_STATUS_INVALID_ARGUMENT;
@@ -216,7 +259,9 @@ CVINFER_API cvinfer_model_type_t CVINFER_CALL cvinfer_result_type(const cvinfer_
 
 CVINFER_API size_t CVINFER_CALL cvinfer_result_count(const cvinfer_result_t* result) {
     if (!result) return 0;
-    return result->type == CVINFER_MODEL_YOLO_SEG ? result->segmentations.size() : result->detections.size();
+    if (result->type == CVINFER_MODEL_YOLO_SEG) return result->segmentations.size();
+    if (result->type == CVINFER_MODEL_RF_DETR_DET) return result->rf_detr_detections.size();
+    return result->detections.size();
 }
 
 CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_get_detection(
@@ -225,10 +270,17 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_get_detection(
     cvinfer_detection_t* detection) {
     clear_error();
     if (!result || !detection) return invalid_argument("result and detection are required");
-    if (result->type != CVINFER_MODEL_YOLO_DET) return invalid_argument("Result is not a detection result");
-    if (index >= result->detections.size()) return invalid_argument("Detection index is out of range");
-    const auto& source = result->detections[index].box;
-    detection->box = {source.x1, source.y1, source.x2, source.y2, source.score, source.class_id};
+    if (result->type != CVINFER_MODEL_YOLO_DET && result->type != CVINFER_MODEL_RF_DETR_DET)
+        return invalid_argument("Result is not a detection result");
+    if (result->type == CVINFER_MODEL_RF_DETR_DET) {
+        if (index >= result->rf_detr_detections.size()) return invalid_argument("Detection index is out of range");
+        const auto& source = result->rf_detr_detections[index].box;
+        detection->box = {source.x1, source.y1, source.x2, source.y2, source.score, source.class_id};
+    } else {
+        if (index >= result->detections.size()) return invalid_argument("Detection index is out of range");
+        const auto& source = result->detections[index].box;
+        detection->box = {source.x1, source.y1, source.x2, source.y2, source.score, source.class_id};
+    }
     return CVINFER_STATUS_OK;
 }
 

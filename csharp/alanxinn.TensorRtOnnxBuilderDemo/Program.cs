@@ -83,7 +83,7 @@ static void PrintUsage()
     Console.WriteLine("  dotnet run -- --onnx model.onnx --engine model.engine [options]");
     Console.WriteLine();
     Console.WriteLine("Options:");
-    Console.WriteLine("  --precision fp32|fp16|int8  Precision (default: fp16)");
+    Console.WriteLine("  --precision fp32|fp16|int8  Precision (default: fp32; RF-DETR always uses fp32)");
     Console.WriteLine("  --workspace-mib N           TensorRT workspace in MiB (default: 4096)");
     Console.WriteLine("  --device N                  CUDA device id; -1 keeps the current device");
     Console.WriteLine("  --no-tf32                   Disable TF32 (enabled by default)");
@@ -178,7 +178,7 @@ sealed class DemoArguments
         {
             OnnxPath = onnxPath,
             EnginePath = enginePath,
-            Precision = ParsePrecision(values.TryGetValue("precision", out var precision) ? precision : "fp16"),
+            Precision = ParsePrecision(values.TryGetValue("precision", out var precision) ? precision : "fp32"),
             WorkspaceMiB = ParseLong(values, "workspace-mib", 4096),
             DeviceId = ParseInt(values, "device", -1),
             EnableTf32 = !flags.Contains("no-tf32"),

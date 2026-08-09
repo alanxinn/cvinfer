@@ -54,3 +54,6 @@ csharp/**/obj/
 
 private/
 package/
+
+# model weights
+**/weights/

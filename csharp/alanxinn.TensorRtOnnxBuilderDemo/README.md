@@ -51,6 +51,9 @@ dotnet run --project .\csharp\alanxinn.TensorRtOnnxBuilderDemo `
 ```
 
 `--precision` 支持 `fp32`、`fp16`、`int8`；`--no-tf32`、`--sparse`、`--strict`
+
+RF-DETR 的 Transformer 输出在 TensorRT 8.6 下必须使用 FP32；即使传入
+`--precision fp16`，builder 也会自动回退到 FP32。
 分别用于关闭 TF32、启用稀疏权重和启用 strict types。程序会输出 engine 路径、大小
 和转换耗时。NuGet 只在
 `bin\Debug\net8.0\runtimes\win-x64\native`（或对应配置目录）放置 builder DLL，

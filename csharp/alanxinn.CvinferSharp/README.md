@@ -34,6 +34,9 @@ using var model = new CvinferModel(
     CvinferModelType.YoloDetection,
     config);
 
+// RF-DETR detection uses the same result API:
+using var rfDetr = new CvinferModel("rf-detr.engine", CvinferModelType.RfDetrDetection, config);
+
 using var result = model.InferBgr(bgrBytes, width, height, 3);
 for (var i = 0; i < result.Count; i++)
 {

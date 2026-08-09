@@ -3,7 +3,8 @@ namespace alanxinn;
 public enum CvinferModelType
 {
     YoloDetection = 1,
-    YoloSegmentation = 2
+    YoloSegmentation = 2,
+    RfDetrDetection = 3
 }
 
 public enum CvinferComputeBackend

@@ -52,9 +52,14 @@ OpenCV 运行库版本必须与 C++ DLL 和 engine 匹配。CPU 构建包可以�
 ```powershell
 alanxinn.CvinferDemo.exe --type det --model yolo11n.engine --img bus.jpg --output result.jpg --classes 80 --preprocess auto --postprocess auto --warmup 100 --iterations 1000
 alanxinn.CvinferDemo.exe --type seg --model yolo11n-seg.engine --img bus.jpg --output result.jpg --preprocess auto --postprocess auto --warmup 100 --iterations 1000
+
+# RF-DETR 检测
+alanxinn.CvinferDemo.exe --type rf-detr --model rf-detr.engine --img bus.jpg --output result.jpg --classes 80 --preprocess auto --postprocess auto --warmup 100 --iterations 1000
 ```
 
 支持参数：`--type`、`--model`、`--img`、`--output`、`--classes`、`--preprocess`、`--postprocess`、`--warmup`、`--iterations`。输入宽高不再作为命令行参数传入：类库会直接读取 TensorRT engine 的输入 shape。固定输入 engine 使用固定 shape；动态输入 engine 使用 optimization profile 0 的 `OPT` shape。`warmup` 不计入统计，`iterations` 为正式测量次数，输出平均/最小/最大耗时。backend 支持 `auto`、`cpu`、`cuda`。不再兼容旧的位置参数形式。
+
+RF-DETR 当前前处理和后处理实现为 CPU；选择 `auto` 或 `cpu` 均可，选择 `cuda` 会明确提示该模型暂不提供 CUDA 专用前/后处理实现。TensorRT 推理仍在 GPU 上执行。
 
 `--input-width` 和 `--input-height` 已移除，继续传入会直接提示错误。
 

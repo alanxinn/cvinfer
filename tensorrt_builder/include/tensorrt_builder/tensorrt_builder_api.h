@@ -53,6 +53,18 @@ typedef struct trt_builder_profile {
     const char* max_shapes;
 } trt_builder_profile_t;
 
+/*
+ * Progress is reported as coarse build stages. TensorRT does not expose a
+ * reliable percentage for buildEngineWithConfig(), so that stage reports a
+ * fixed percentage plus heartbeat notifications while work is ongoing.
+ */
+typedef void (TENSORRT_BUILDER_CALL *trt_builder_progress_callback_t)(
+    int32_t stage,
+    int32_t percent,
+    int32_t is_heartbeat,
+    const char* message,
+    void* user_data);
+
 TENSORRT_BUILDER_API const char* TENSORRT_BUILDER_CALL trt_builder_last_error(void);
 
 TENSORRT_BUILDER_API void TENSORRT_BUILDER_CALL trt_builder_config_init(
@@ -64,6 +76,16 @@ TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL trt_builder_buil
     const trt_builder_config_t* config,
     const trt_builder_profile_t* profiles,
     size_t profile_count);
+
+TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL
+trt_builder_build_onnx_with_progress(
+    const char* onnx_path,
+    const char* engine_path,
+    const trt_builder_config_t* config,
+    const trt_builder_profile_t* profiles,
+    size_t profile_count,
+    trt_builder_progress_callback_t progress_callback,
+    void* progress_user_data);
 
 #ifdef __cplusplus
 }

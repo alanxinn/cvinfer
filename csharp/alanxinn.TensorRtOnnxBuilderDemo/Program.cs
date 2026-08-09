@@ -17,7 +17,8 @@ try
         DeviceId = arguments.DeviceId,
         EnableTf32 = arguments.EnableTf32,
         EnableSparseWeights = arguments.EnableSparseWeights,
-        StrictTypes = arguments.StrictTypes
+        StrictTypes = arguments.StrictTypes,
+        Progress = new Progress<TensorRtBuildProgress>(PrintBuildProgress)
     };
 
     if (arguments.HasOptimizationProfile)
@@ -93,6 +94,17 @@ static void PrintUsage()
     Console.WriteLine("  --opt-shape 1x3x640x640     Dynamic profile optimal shape");
     Console.WriteLine("  --max-shape 1x3x1280x1280   Dynamic profile maximum shape");
     Console.WriteLine("  --help                      Show this help");
+}
+
+static void PrintBuildProgress(TensorRtBuildProgress value)
+{
+    const int width = 32;
+    var completed = Math.Clamp(value.Percent, 0, 100) * width / 100;
+    var bar = new string('#', completed) + new string('-', width - completed);
+    var heartbeat = value.IsHeartbeat ? " (working)" : string.Empty;
+    Console.Write($"\r[{bar}] {value.Percent,3}% {value.Message}{heartbeat}   ");
+    if (value.Percent >= 100)
+        Console.WriteLine();
 }
 
 sealed class DemoArguments

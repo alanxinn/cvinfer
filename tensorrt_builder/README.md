@@ -64,7 +64,22 @@ Release runtime ZIP。可在仓库根目录执行：
 
 - `trt_builder_config_init`：初始化精度、workspace、device 和其他构建选项；
 - `trt_builder_build_onnx`：解析 ONNX、构建 engine 并写入目标文件；
+- `trt_builder_build_onnx_with_progress`：同上，并通过回调报告阶段进度和构建阶段心跳；
 - `trt_builder_last_error`：读取线程本地 UTF-8 错误信息。
+
+进度回调只表示粗粒度阶段。TensorRT 不提供引擎构建内部的可靠百分比，
+因此构建阶段使用固定百分比和周期性 heartbeat，调用方应显示“进行中”状态。
+
+回调签名：
+
+```cpp
+using trt_builder_progress_callback_t = void (TENSORRT_BUILDER_CALL *)(
+    int32_t stage, int32_t percent, int32_t is_heartbeat,
+    const char* message, void* user_data);
+```
+
+`is_heartbeat != 0` 表示构建阶段的周期性通知；`message` 仅在回调调用期间有效，
+调用方如需保存必须立即复制。
 
 动态输入通过 min/opt/max optimization profile 传入。INT8 适用于已包含 Q/DQ
 量化节点的 ONNX；自定义 calibrator 需要扩展 native builder API。

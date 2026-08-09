@@ -15,6 +15,11 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <thread>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,6 +30,62 @@ thread_local std::string g_last_error;
 
 void clear_error() { g_last_error.clear(); }
 void set_error(const std::string& message) { g_last_error = message; }
+
+class ProgressReporter {
+public:
+    ProgressReporter(trt_builder_progress_callback_t callback, void* user_data)
+        : callback_(callback), user_data_(user_data) {}
+
+    ~ProgressReporter() { stop_heartbeat(); }
+
+    void report(int32_t stage, int32_t percent, const char* message, bool heartbeat = false) const noexcept {
+        if (!callback_) return;
+        try {
+            callback_(stage, percent, heartbeat ? 1 : 0, message ? message : "", user_data_);
+        } catch (...) {
+            // Never allow exceptions from a managed callback to cross the C ABI.
+        }
+    }
+
+    void start_heartbeat(int32_t stage, int32_t percent, const char* message) {
+        if (!callback_ || heartbeat_running_.exchange(true)) return;
+        heartbeat_stage_ = stage;
+        heartbeat_percent_ = percent;
+        heartbeat_message_ = message ? message : "";
+        heartbeat_started_ = std::chrono::steady_clock::now();
+        heartbeat_thread_ = std::thread([this]() {
+            while (heartbeat_running_.load()) {
+                const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::steady_clock::now() - heartbeat_started_).count();
+                std::ostringstream text;
+                text << heartbeat_message_ << " (elapsed " << elapsed << " s)";
+                report(heartbeat_stage_, heartbeat_percent_, text.str().c_str(), true);
+                std::unique_lock<std::mutex> lock(heartbeat_mutex_);
+                heartbeat_cv_.wait_for(lock, std::chrono::seconds(1), [this]() {
+                    return !heartbeat_running_.load();
+                });
+            }
+        });
+    }
+
+    void stop_heartbeat() noexcept {
+        if (!heartbeat_running_.exchange(false)) return;
+        heartbeat_cv_.notify_all();
+        if (heartbeat_thread_.joinable()) heartbeat_thread_.join();
+    }
+
+private:
+    trt_builder_progress_callback_t callback_{};
+    void* user_data_{};
+    std::atomic<bool> heartbeat_running_{false};
+    std::thread heartbeat_thread_;
+    std::chrono::steady_clock::time_point heartbeat_started_{};
+    int32_t heartbeat_stage_{};
+    int32_t heartbeat_percent_{};
+    std::string heartbeat_message_;
+    std::mutex heartbeat_mutex_;
+    std::condition_variable heartbeat_cv_;
+};
 
 class Logger final : public nvinfer1::ILogger {
 public:
@@ -282,13 +343,18 @@ TENSORRT_BUILDER_API void TENSORRT_BUILDER_CALL trt_builder_config_init(
     config->strict_types = 0;
 }
 
-TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL trt_builder_build_onnx(
+TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL
+trt_builder_build_onnx_with_progress(
     const char* onnx_path,
     const char* engine_path,
     const trt_builder_config_t* source_config,
     const trt_builder_profile_t* profiles,
-    size_t profile_count) {
+    size_t profile_count,
+    trt_builder_progress_callback_t progress_callback,
+    void* progress_user_data) {
     clear_error();
+    ProgressReporter progress(progress_callback, progress_user_data);
+    progress.report(0, 0, "Starting ONNX to TensorRT conversion");
     if (!onnx_path || !*onnx_path || !engine_path || !*engine_path)
         return set_error("ONNX path and engine path are required"), TRT_BUILDER_STATUS_INVALID_ARGUMENT;
     if (profile_count > 0 && !profiles)
@@ -306,29 +372,37 @@ TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL trt_builder_buil
         return set_error("workspace_mib is too large"), TRT_BUILDER_STATUS_INVALID_ARGUMENT;
     try {
         if (config.device_id >= 0) check_cuda(cudaSetDevice(config.device_id), "cudaSetDevice");
+        progress.report(1, 10, "CUDA device initialized");
         Logger logger;
         if (!initLibNvInferPlugins(&logger, ""))
             throw std::runtime_error("TensorRT plugin registry initialization failed");
+        progress.report(2, 15, "TensorRT plugins initialized");
         TrtPtr<nvinfer1::IBuilder> builder(nvinfer1::createInferBuilder(logger));
         if (!builder) throw std::runtime_error("TensorRT builder creation failed");
+        progress.report(3, 20, "TensorRT builder created");
         const auto network_flags = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
         TrtPtr<nvinfer1::INetworkDefinition> network(builder->createNetworkV2(network_flags));
         if (!network) {
             throw std::runtime_error("TensorRT network creation failed");
         }
+        progress.report(4, 25, "Network created");
         TrtPtr<nvonnxparser::IParser> parser(nvonnxparser::createParser(*network, logger));
         if (!parser) {
             throw std::runtime_error("TensorRT ONNX parser creation failed");
         }
+        progress.report(5, 30, "ONNX parser created");
         const auto onnx_data = read_onnx(onnx_path);
+        progress.report(6, 35, "ONNX file loaded");
         if (!parser->parse(onnx_data.data(), onnx_data.size(), onnx_path)) {
             const auto details = parser_errors(*parser);
             throw std::runtime_error(details.empty() ? "TensorRT ONNX parsing failed" : details);
         }
+        progress.report(7, 45, "ONNX parsed");
         TrtPtr<nvinfer1::IBuilderConfig> builder_config(builder->createBuilderConfig());
         if (!builder_config) {
             throw std::runtime_error("TensorRT builder config creation failed");
         }
+        progress.report(8, 50, "Builder configuration created");
         builder_config->setMaxWorkspaceSize(static_cast<std::size_t>(config.workspace_mib) * 1024U * 1024U);
         if (config.precision == TRT_BUILDER_PRECISION_FP16)
             builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
@@ -339,7 +413,10 @@ TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL trt_builder_buil
         if (config.enable_sparse_weights) builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
         if (config.strict_types) builder_config->setFlag(nvinfer1::BuilderFlag::kSTRICT_TYPES);
         configure_profiles(*builder, *network, *builder_config, profiles, profile_count);
+        progress.report(9, 60, "Optimization profiles configured");
+        progress.start_heartbeat(10, 65, "Building TensorRT engine");
         TrtPtr<nvinfer1::ICudaEngine> engine(builder->buildEngineWithConfig(*network, *builder_config));
+        progress.stop_heartbeat();
         if (!engine) {
             throw std::runtime_error(logger.last_error_.empty() ? "TensorRT engine build failed" : logger.last_error_);
         }
@@ -347,7 +424,10 @@ TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL trt_builder_buil
         if (!serialized) {
             throw std::runtime_error("TensorRT engine serialization failed");
         }
+        progress.report(11, 92, "Engine serialized");
         write_engine(engine_path, *serialized);
+        progress.report(12, 98, "Engine file written");
+        progress.report(13, 100, "Conversion completed");
         return TRT_BUILDER_STATUS_OK;
     } catch (const std::invalid_argument& error) {
         set_error(error.what());
@@ -362,6 +442,16 @@ TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL trt_builder_buil
         set_error("Unknown TensorRT ONNX build failure");
         return TRT_BUILDER_STATUS_BUILD_ERROR;
     }
+}
+
+TENSORRT_BUILDER_API trt_builder_status_t TENSORRT_BUILDER_CALL trt_builder_build_onnx(
+    const char* onnx_path,
+    const char* engine_path,
+    const trt_builder_config_t* config,
+    const trt_builder_profile_t* profiles,
+    size_t profile_count) {
+    return trt_builder_build_onnx_with_progress(
+        onnx_path, engine_path, config, profiles, profile_count, nullptr, nullptr);
 }
 
 } // extern "C"

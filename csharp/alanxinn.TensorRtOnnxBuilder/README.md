@@ -96,6 +96,33 @@ TensorRtOnnxBuilder.Build(
 主要优化的尺寸。INT8 适用于已经包含 Q/DQ 量化节点的 ONNX；需要自定义 calibrator
 时应扩展 native C++ builder API，而不是把 TensorRT C++ ABI 直接暴露给 C#。
 
+## 转换进度
+
+可通过 `TensorRtBuildOptions.Progress` 接收转换阶段进度：
+
+```csharp
+var options = new TensorRtBuildOptions
+{
+    Progress = new Progress<TensorRtBuildProgress>(value =>
+        Console.WriteLine($"[{value.Percent}%] {value.Message}"))
+};
+TensorRtOnnxBuilder.Build("model.onnx", "model.engine", options);
+```
+
+进度是阶段性的（初始化、解析 ONNX、配置、序列化和写文件）。TensorRT
+没有提供 `buildEngineWithConfig` 的可靠百分比回调，因此在最长的引擎构建阶段
+百分比保持在 65%，每秒发送一次带已耗时的 heartbeat，供 UI 显示旋转动画或
+“正在构建”状态；这不是伪造的精确百分比。
+
+阶段编号：`0` 开始、`1` CUDA 初始化、`2` 插件初始化、`3` 创建 builder、
+`4` 创建 network、`5` 创建 ONNX parser、`6` 读取 ONNX、`7` 解析 ONNX、
+`8` 创建配置、`9` 配置 profile、`10` 构建 engine、`11` 序列化、
+`12` 写文件、`13` 完成。
+
+`TensorRtOnnxBuilderDemo` 已内置控制台进度条。桌面应用建议将同步的
+`Build` 放到后台任务中执行，避免阻塞 UI 线程；`Progress<T>` 会按调用方的
+同步上下文派发通知。
+
 ## 构建与打包
 
 先用 CMake 构建 native builder（会将 builder 和 TensorRT/CUDA 依赖复制到独立的

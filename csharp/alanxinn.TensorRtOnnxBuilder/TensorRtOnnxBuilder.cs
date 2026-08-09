@@ -39,12 +39,20 @@ public static class TensorRtOnnxBuilder
 
         Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? Environment.CurrentDirectory);
         var startedAt = DateTime.UtcNow;
+        var progressContext = IntPtr.Zero;
+        NativeMethods.ProgressCallback? progressCallback = null;
         var onnxPointer = IntPtr.Zero;
         var enginePointer = IntPtr.Zero;
         var nativeProfilePointers = new List<IntPtr>();
         var profileArray = IntPtr.Zero;
         try
         {
+            if (options.Progress is not null)
+            {
+                var context = new ProgressContext(options.Progress, startedAt);
+                progressContext = GCHandle.ToIntPtr(GCHandle.Alloc(context));
+                progressCallback = ReportProgress;
+            }
             onnxPointer = NativeMethods.StringToCoTaskMemUtf8(sourcePath);
             enginePointer = NativeMethods.StringToCoTaskMemUtf8(destinationPath);
             var nativeConfig = new NativeMethods.NativeConfig();
@@ -76,12 +84,29 @@ public static class TensorRtOnnxBuilder
                 }
             }
 
-            var status = NativeMethods.trt_builder_build_onnx(
-                onnxPointer,
-                enginePointer,
-                ref nativeConfig,
-                profileArray,
-                new UIntPtr((ulong)profiles.Count));
+            int status;
+            if (progressCallback is null)
+            {
+                // Keep compatibility with an older native builder when no
+                // progress reporting was requested.
+                status = NativeMethods.trt_builder_build_onnx(
+                    onnxPointer,
+                    enginePointer,
+                    ref nativeConfig,
+                    profileArray,
+                    new UIntPtr((ulong)profiles.Count));
+            }
+            else
+            {
+                status = NativeMethods.trt_builder_build_onnx_with_progress(
+                    onnxPointer,
+                    enginePointer,
+                    ref nativeConfig,
+                    profileArray,
+                    new UIntPtr((ulong)profiles.Count),
+                    progressCallback,
+                    progressContext);
+            }
             if (status != 0)
                 throw new TensorRtBuilderException(status, NativeMethods.LastError());
         }
@@ -91,6 +116,11 @@ public static class TensorRtOnnxBuilder
             NativeMethods.Free(profileArray);
             NativeMethods.Free(onnxPointer);
             NativeMethods.Free(enginePointer);
+            if (progressContext != IntPtr.Zero)
+            {
+                GCHandle.FromIntPtr(progressContext).Free();
+                progressContext = IntPtr.Zero;
+            }
         }
 
         if (!File.Exists(destinationPath))
@@ -104,6 +134,43 @@ public static class TensorRtOnnxBuilder
             options.Precision,
             DateTime.UtcNow - startedAt,
             engineSize);
+    }
+
+    private sealed class ProgressContext
+    {
+        public ProgressContext(IProgress<TensorRtBuildProgress> progress, DateTime startedAt)
+        {
+            Progress = progress;
+            StartedAt = startedAt;
+        }
+
+        public IProgress<TensorRtBuildProgress> Progress { get; }
+        public DateTime StartedAt { get; }
+    }
+
+    private static void ReportProgress(
+        int stage,
+        int percent,
+        int isHeartbeat,
+        IntPtr messageUtf8,
+        IntPtr userData)
+    {
+        try
+        {
+            if (userData == IntPtr.Zero) return;
+            var context = (ProgressContext?)GCHandle.FromIntPtr(userData).Target;
+            if (context is null) return;
+            context.Progress.Report(new TensorRtBuildProgress(
+                stage,
+                percent,
+                isHeartbeat != 0,
+                NativeMethods.PtrToStringUtf8(messageUtf8) ?? string.Empty,
+                DateTime.UtcNow - context.StartedAt));
+        }
+        catch
+        {
+            // A progress handler must never escape through the unmanaged callback.
+        }
     }
 
     private static IntPtr AllocateShapeString(

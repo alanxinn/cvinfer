@@ -62,6 +62,30 @@ public sealed class TensorRtBuildOptions
     /// </summary>
     public IReadOnlyList<TensorRtOptimizationProfile> OptimizationProfiles { get; set; } =
         Array.Empty<TensorRtOptimizationProfile>();
+
+    /// <summary>
+    /// Receives coarse conversion stages. The engine build stage reports heartbeat
+    /// messages because TensorRT does not expose a reliable build percentage.
+    /// </summary>
+    public IProgress<TensorRtBuildProgress>? Progress { get; set; }
+}
+
+public sealed class TensorRtBuildProgress
+{
+    internal TensorRtBuildProgress(int stage, int percent, bool isHeartbeat, string message, TimeSpan elapsed)
+    {
+        Stage = stage;
+        Percent = percent;
+        IsHeartbeat = isHeartbeat;
+        Message = message;
+        Elapsed = elapsed;
+    }
+
+    public int Stage { get; }
+    public int Percent { get; }
+    public bool IsHeartbeat { get; }
+    public string Message { get; }
+    public TimeSpan Elapsed { get; }
 }
 
 public sealed class TensorRtBuildResult

@@ -27,6 +27,14 @@ internal static class NativeMethods
         public IntPtr MaxShapes;
     }
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ProgressCallback(
+        int stage,
+        int percent,
+        int isHeartbeat,
+        IntPtr messageUtf8,
+        IntPtr userData);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr trt_builder_last_error();
 
@@ -40,6 +48,16 @@ internal static class NativeMethods
         ref NativeConfig config,
         IntPtr profiles,
         UIntPtr profileCount);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int trt_builder_build_onnx_with_progress(
+        IntPtr onnxPathUtf8,
+        IntPtr enginePathUtf8,
+        ref NativeConfig config,
+        IntPtr profiles,
+        UIntPtr profileCount,
+        ProgressCallback? progressCallback,
+        IntPtr progressUserData);
 
     internal static string LastError()
     {
@@ -62,7 +80,7 @@ internal static class NativeMethods
         if (pointer != IntPtr.Zero) Marshal.FreeCoTaskMem(pointer);
     }
 
-    private static string? PtrToStringUtf8(IntPtr pointer)
+    internal static string? PtrToStringUtf8(IntPtr pointer)
     {
         if (pointer == IntPtr.Zero) return null;
         var length = 0;

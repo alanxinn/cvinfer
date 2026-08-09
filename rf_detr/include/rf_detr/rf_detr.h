@@ -16,6 +16,12 @@ enum class ComputeBackend {
 
 struct Box { float x1{}, y1{}, x2{}, y2{}, score{}; int class_id{}; };
 struct Detection { Box box; };
+struct Segmentation {
+    Box box;
+    std::vector<std::uint8_t> mask;
+    int mask_width{};
+    int mask_height{};
+};
 struct Config {
     int input_width{};
     int input_height{};
@@ -25,6 +31,7 @@ struct Config {
     std::string output_name;
     float confidence_threshold{0.25F};
     float nms_threshold{0.45F};
+    float mask_threshold{0.5F};
     bool class_agnostic_nms{false};
     // RF-DETR uses ImageNet normalization after RGB conversion.
     bool letterbox{false};
@@ -43,6 +50,8 @@ std::vector<float> preprocess_bgr(const std::uint8_t* data, int width, int heigh
                                   const Config& config);
 std::vector<Detection> decode_detections(const core::Tensor& boxes, const core::Tensor& logits,
                                          const Config& config, int image_width, int image_height);
+std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& outputs,
+                                                const Config& config, int image_width, int image_height);
 std::vector<Detection> nms(std::vector<Detection> candidates, float threshold, bool class_agnostic = false);
 
 class Detector {
@@ -50,6 +59,19 @@ public:
     Detector(const std::string& engine_path, Config config = {});
     std::vector<Detection> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Detection> infer_image(const std::uint8_t* data, int width, int height, int channels);
+    const Timing& last_timing() const noexcept { return timing_; }
+
+private:
+    core::TrtSession session_;
+    Config config_;
+    Timing timing_;
+};
+
+class Segmentor {
+public:
+    Segmentor(const std::string& engine_path, Config config = {});
+    std::vector<Segmentation> infer(const std::vector<float>& chw, int image_width, int image_height);
+    std::vector<Segmentation> infer_image(const std::uint8_t* data, int width, int height, int channels);
     const Timing& last_timing() const noexcept { return timing_; }
 
 private:

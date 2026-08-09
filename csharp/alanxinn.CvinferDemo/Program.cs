@@ -13,19 +13,21 @@ try
 {
     parsed = ParseArguments(args);
     modelTypeName = GetRequiredOption(parsed.Options, "type");
-    if (!modelTypeName.Equals("det", StringComparison.OrdinalIgnoreCase) &&
-        !modelTypeName.Equals("seg", StringComparison.OrdinalIgnoreCase) &&
-        !modelTypeName.Equals("rf-detr", StringComparison.OrdinalIgnoreCase) &&
-        !modelTypeName.Equals("rfdetr", StringComparison.OrdinalIgnoreCase))
-        throw new ArgumentException("--type must be det, seg or rf-detr");
+    if (!modelTypeName.Equals("yolo-det", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("yolo-seg", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("rf-detr-det", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("rf-detr-seg", StringComparison.OrdinalIgnoreCase))
+        throw new ArgumentException("--type must be yolo-det, yolo-seg, rf-detr-det or rf-detr-seg");
     enginePath = GetRequiredOption(parsed.Options, "model");
     imagePath = GetRequiredOption(parsed.Options, "img");
     resultPath = GetOption(parsed.Options, "output", "cvinfer_result.jpg");
-    modelType = modelTypeName.Equals("seg", StringComparison.OrdinalIgnoreCase)
+    modelType = modelTypeName.Equals("yolo-seg", StringComparison.OrdinalIgnoreCase)
         ? CvinferModelType.YoloSegmentation
-        : (modelTypeName.Equals("rf-detr", StringComparison.OrdinalIgnoreCase) || modelTypeName.Equals("rfdetr", StringComparison.OrdinalIgnoreCase)
+        : (modelTypeName.Equals("rf-detr-det", StringComparison.OrdinalIgnoreCase)
             ? CvinferModelType.RfDetrDetection
-            : CvinferModelType.YoloDetection);
+            : (modelTypeName.Equals("rf-detr-seg", StringComparison.OrdinalIgnoreCase)
+                ? CvinferModelType.RfDetrSegmentation
+                : CvinferModelType.YoloDetection));
     config = new CvinferConfig
     {
         ClassCount = ParseIntOption(parsed.Options, "classes", 80),
@@ -76,16 +78,18 @@ try
         var boxesToDraw = new List<(CvinferBox Box, Scalar Color)>();
         for (var i = 0; i < result.Count; ++i)
         {
-            var segmentation = modelType == CvinferModelType.YoloSegmentation
+            var isSegmentation = modelType == CvinferModelType.YoloSegmentation ||
+                modelType == CvinferModelType.RfDetrSegmentation;
+            var segmentation = isSegmentation
                 ? result.GetSegmentation(i)
                 : default;
-            var box = modelType == CvinferModelType.YoloSegmentation
+            var box = isSegmentation
                 ? segmentation.Box
                 : result.GetDetection(i).Box;
             var color = ColorForClass(box.ClassId);
             boxesToDraw.Add((box, color));
 
-            if (modelType == CvinferModelType.YoloSegmentation)
+            if (isSegmentation)
             {
                 var mask = result.CopyMask(i);
                 OverlayMask(output, mask, segmentation.MaskWidth, segmentation.MaskHeight,

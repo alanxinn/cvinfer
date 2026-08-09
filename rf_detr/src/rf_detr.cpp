@@ -86,6 +86,46 @@ float at(const std::vector<float>& values, const Layout& layout, int index, int 
     return values[static_cast<std::size_t>(index) * layout.channels + channel];
 }
 
+struct MaskLayout {
+    int queries{};
+    int height{};
+    int width{};
+    int query_axis{};
+};
+
+MaskLayout infer_mask_layout(const core::Tensor& tensor, int queries) {
+    if (tensor.shape.empty() || queries <= 0) return {};
+    std::vector<int64_t> shape = tensor.shape;
+    if (shape.size() >= 4 && shape.front() == 1) shape.erase(shape.begin());
+    if (shape.size() != 3) return {};
+    int query_axis = -1;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (shape[static_cast<std::size_t>(axis)] == queries) {
+            query_axis = axis;
+            break;
+        }
+    }
+    if (query_axis < 0) return {};
+    int spatial[2]{};
+    int spatial_index = 0;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (axis != query_axis && spatial_index < 2)
+            spatial[spatial_index++] = static_cast<int>(shape[static_cast<std::size_t>(axis)]);
+    }
+    if (spatial[0] <= 0 || spatial[1] <= 0) return {};
+    return {queries, spatial[0], spatial[1], query_axis};
+}
+
+float mask_at(const std::vector<float>& values, const MaskLayout& layout, int query, int y, int x) {
+    if (layout.query_axis == 0) {
+        return values[(static_cast<std::size_t>(query) * layout.height + y) * layout.width + x];
+    }
+    if (layout.query_axis == 1) {
+        return values[(static_cast<std::size_t>(y) * layout.queries + query) * layout.width + x];
+    }
+    return values[(static_cast<std::size_t>(y) * layout.width + x) * layout.queries + query];
+}
+
 } // namespace
 
 std::vector<float> preprocess_bgr(const std::uint8_t* data, int width, int height, int channels,
@@ -196,6 +236,149 @@ std::vector<Detection> nms(std::vector<Detection> candidates, float threshold, b
     return result;
 }
 
+std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& outputs,
+                                                const Config& config, int image_width, int image_height) {
+    const core::Tensor* boxes_tensor = nullptr;
+    const core::Tensor* labels_tensor = nullptr;
+    const core::Tensor* masks_tensor = nullptr;
+    for (const auto& tensor : outputs) {
+        if (tensor.name == "dets") boxes_tensor = &tensor;
+        else if (tensor.name == "labels") labels_tensor = &tensor;
+        else if (tensor.name == "masks") masks_tensor = &tensor;
+    }
+    for (const auto& tensor : outputs) {
+        if (tensor.shape.size() == 4 && !masks_tensor) masks_tensor = &tensor;
+        else if (tensor.shape.size() >= 3 && !boxes_tensor) {
+            const int last = static_cast<int>(tensor.shape.back());
+            const int previous = static_cast<int>(tensor.shape[tensor.shape.size() - 2]);
+            if (last == 4 || previous == 4) boxes_tensor = &tensor;
+        } else if (tensor.shape.size() >= 3 && !labels_tensor) {
+            labels_tensor = &tensor;
+        }
+    }
+    if (!boxes_tensor || !labels_tensor || !masks_tensor ||
+        image_width <= 0 || image_height <= 0 || config.input_width <= 0 || config.input_height <= 0)
+        return {};
+
+    const auto boxes = tensor_values(*boxes_tensor);
+    const auto labels = tensor_values(*labels_tensor);
+    const auto masks = tensor_values(*masks_tensor);
+    const auto box_layout = infer_layout(*boxes_tensor, 4);
+    const auto label_layout = infer_layout(*labels_tensor, config.class_count);
+    if (boxes.empty() || labels.empty() || masks.empty() ||
+        box_layout.count <= 0 || box_layout.channels < 4 ||
+        label_layout.count <= 0 || label_layout.channels <= 0)
+        return {};
+    const int query_count = (std::min)(box_layout.count, label_layout.count);
+    const auto mask_layout = infer_mask_layout(*masks_tensor, query_count);
+    if (mask_layout.queries <= 0) return {};
+
+    int classes = label_layout.channels;
+    if (classes == 91) classes = 90;
+    else if (config.class_count > 0) classes = (std::min)(classes, config.class_count);
+    if (classes <= 0) return {};
+
+    const float sx = config.letterbox
+        ? (std::min)(static_cast<float>(config.input_width) / image_width,
+                     static_cast<float>(config.input_height) / image_height)
+        : static_cast<float>(config.input_width) / image_width;
+    const float sy = config.letterbox ? sx : static_cast<float>(config.input_height) / image_height;
+    const float pad_x = config.letterbox ? (config.input_width - image_width * sx) * 0.5F : 0.0F;
+    const float pad_y = config.letterbox ? (config.input_height - image_height * sy) * 0.5F : 0.0F;
+    const float threshold = (std::min)(0.999999F, (std::max)(0.000001F, config.mask_threshold));
+    const float threshold_logit = std::log(threshold / (1.0F - threshold));
+
+    struct Candidate {
+        Box box;
+        int query{};
+    };
+    std::vector<Candidate> candidates;
+    candidates.reserve(static_cast<std::size_t>(query_count));
+    for (int query = 0; query < query_count; ++query) {
+        int class_id = 0;
+        float score = sigmoid(at(labels, label_layout, query, 0));
+        for (int c = 1; c < classes; ++c) {
+            const float candidate_score = sigmoid(at(labels, label_layout, query, c));
+            if (candidate_score > score) {
+                score = candidate_score;
+                class_id = c;
+            }
+        }
+        if (score < config.confidence_threshold) continue;
+        float cx = at(boxes, box_layout, query, 0);
+        float cy = at(boxes, box_layout, query, 1);
+        float w = at(boxes, box_layout, query, 2);
+        float h = at(boxes, box_layout, query, 3);
+        if (std::fabs(cx) <= 1.5F && std::fabs(cy) <= 1.5F &&
+            std::fabs(w) <= 1.5F && std::fabs(h) <= 1.5F) {
+            cx *= config.input_width;
+            cy *= config.input_height;
+            w *= config.input_width;
+            h *= config.input_height;
+        }
+        const float x1 = (cx - w * 0.5F - pad_x) / sx;
+        const float y1 = (cy - h * 0.5F - pad_y) / sy;
+        const float x2 = (cx + w * 0.5F - pad_x) / sx;
+        const float y2 = (cy + h * 0.5F - pad_y) / sy;
+        Box box{
+            (std::max)(0.0F, x1), (std::max)(0.0F, y1),
+            (std::min)(static_cast<float>(image_width), x2),
+            (std::min)(static_cast<float>(image_height), y2),
+            score, class_id
+        };
+        if (box.x2 <= box.x1 || box.y2 <= box.y1) continue;
+        candidates.push_back({box, query});
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+        return a.box.score > b.box.score;
+    });
+    if (candidates.size() > 100) candidates.resize(100);
+
+    auto sample_mask = [&](int query, float source_x, float source_y) {
+        const float model_x = source_x * sx + pad_x;
+        const float model_y = source_y * sy + pad_y;
+        const float gx = (model_x + 0.5F) * mask_layout.width / config.input_width - 0.5F;
+        const float gy = (model_y + 0.5F) * mask_layout.height / config.input_height - 0.5F;
+        const float clamped_x = (std::max)(0.0F, (std::min)(static_cast<float>(mask_layout.width - 1), gx));
+        const float clamped_y = (std::max)(0.0F, (std::min)(static_cast<float>(mask_layout.height - 1), gy));
+        const int x0 = static_cast<int>(std::floor(clamped_x));
+        const int y0 = static_cast<int>(std::floor(clamped_y));
+        const int x1 = (std::min)(mask_layout.width - 1, x0 + 1);
+        const int y1 = (std::min)(mask_layout.height - 1, y0 + 1);
+        const float wx = clamped_x - x0;
+        const float wy = clamped_y - y0;
+        const float top = mask_at(masks, mask_layout, query, y0, x0) * (1.0F - wx) +
+                          mask_at(masks, mask_layout, query, y0, x1) * wx;
+        const float bottom = mask_at(masks, mask_layout, query, y1, x0) * (1.0F - wx) +
+                             mask_at(masks, mask_layout, query, y1, x1) * wx;
+        return top * (1.0F - wy) + bottom * wy;
+    };
+
+    std::vector<Segmentation> result;
+    result.reserve(candidates.size());
+    for (const auto& candidate : candidates) {
+        const int left = (std::max)(0, static_cast<int>(std::floor(candidate.box.x1)));
+        const int top = (std::max)(0, static_cast<int>(std::floor(candidate.box.y1)));
+        const int right = (std::min)(image_width, static_cast<int>(std::ceil(candidate.box.x2)));
+        const int bottom = (std::min)(image_height, static_cast<int>(std::ceil(candidate.box.y2)));
+        if (right <= left || bottom <= top) continue;
+        Segmentation item;
+        item.box = candidate.box;
+        item.mask_width = right - left;
+        item.mask_height = bottom - top;
+        item.mask.assign(static_cast<std::size_t>(item.mask_width) * item.mask_height, 0);
+        for (int y = 0; y < item.mask_height; ++y) {
+            for (int x = 0; x < item.mask_width; ++x) {
+                const float logit = sample_mask(candidate.query, left + x + 0.5F, top + y + 0.5F);
+                if (logit >= threshold_logit)
+                    item.mask[static_cast<std::size_t>(y) * item.mask_width + x] = 255;
+            }
+        }
+        result.push_back(std::move(item));
+    }
+    return result;
+}
+
 Detector::Detector(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(std::move(config)) {
     const auto inputs = session_.input_names();
     if (!inputs.empty()) {
@@ -252,6 +435,51 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
     // RF-DETR is set-based; unlike YOLO, its exported queries are already de-duplicated.
     auto result = decode_detections(*boxes, *logits, config_, image_width, image_height);
     timing_.postprocess_ms = elapsed_ms(post_start, std::chrono::steady_clock::now());
+    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    return result;
+}
+
+Segmentor::Segmentor(const std::string& path, Config config)
+    : session_(core::TrtSession::load(path)), config_(std::move(config)) {
+    const auto inputs = session_.input_names();
+    if (!inputs.empty()) {
+        if (config_.input_name.empty()) config_.input_name = inputs.front();
+        const auto shape = session_.tensor_shape(config_.input_name);
+        if (shape.size() == 4) {
+            if (config_.input_height <= 0) config_.input_height = static_cast<int>(shape[2]);
+            if (config_.input_width <= 0) config_.input_width = static_cast<int>(shape[3]);
+        }
+    }
+}
+
+std::vector<Segmentation> Segmentor::infer_image(const std::uint8_t* data, int width, int height, int channels) {
+    if (config_.preprocess_backend == ComputeBackend::Cuda)
+        throw std::runtime_error("RF-DETR CUDA preprocessing is not available; use --preprocess cpu or auto");
+    const auto total_start = std::chrono::steady_clock::now();
+    auto input = preprocess_bgr(data, width, height, channels, config_);
+    timing_.preprocess_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    auto result = infer(input, width, height);
+    timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    return result;
+}
+
+std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int image_width, int image_height) {
+    if (chw.empty()) return {};
+    if (config_.postprocess_backend == ComputeBackend::Cuda)
+        throw std::runtime_error("RF-DETR CUDA postprocessing is not available; use --postprocess cpu or auto");
+    const auto inputs = session_.input_names();
+    const std::string input = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    if (input.empty()) throw std::runtime_error("RF-DETR segmentation engine has no input tensor");
+    session_.set_shape(input, {1, 3, config_.input_height, config_.input_width});
+    session_.set_output_host_copy(true);
+    session_.set_input(input, chw.data(), chw.size() * sizeof(float));
+    const auto inference_start = std::chrono::steady_clock::now();
+    session_.infer();
+    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = std::chrono::steady_clock::now();
+    const auto outputs = session_.outputs();
+    auto result = decode_segmentations(outputs, config_, image_width, image_height);
+    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
     timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
     return result;
 }

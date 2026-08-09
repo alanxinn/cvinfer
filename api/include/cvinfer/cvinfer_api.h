@@ -33,7 +33,8 @@ typedef enum cvinfer_status {
 typedef enum cvinfer_model_type {
     CVINFER_MODEL_YOLO_DET = 1,
     CVINFER_MODEL_YOLO_SEG = 2,
-    CVINFER_MODEL_RF_DETR_DET = 3
+    CVINFER_MODEL_RF_DETR_DET = 3,
+    CVINFER_MODEL_RF_DETR_SEG = 4
 } cvinfer_model_type_t;
 
 typedef enum cvinfer_compute_backend {

@@ -4,7 +4,8 @@ public enum CvinferModelType
 {
     YoloDetection = 1,
     YoloSegmentation = 2,
-    RfDetrDetection = 3
+    RfDetrDetection = 3,
+    RfDetrSegmentation = 4
 }
 
 public enum CvinferComputeBackend

@@ -5,6 +5,7 @@
 `alanxinn.CvinferSharp` 是 `alanxinn_cvinfer.dll` 的 .NET C# 封装，支持 `net472`、`net6.0` 和 `net8.0`，提供：
 
 - YOLO11 检测和分割模型加载；
+- RF-DETR 检测和分割模型加载；
 - BGR 图像推理；
 - 检测框、分割框和 Mask 读取；
 - CPU/CUDA 前处理和后处理配置；
@@ -36,6 +37,7 @@ using var model = new CvinferModel(
 
 // RF-DETR detection uses the same result API:
 using var rfDetr = new CvinferModel("rf-detr.engine", CvinferModelType.RfDetrDetection, config);
+using var rfDetrSeg = new CvinferModel("rf-detr-seg.engine", CvinferModelType.RfDetrSegmentation, config);
 
 using var result = model.InferBgr(bgrBytes, width, height, 3);
 for (var i = 0; i < result.Count; i++)

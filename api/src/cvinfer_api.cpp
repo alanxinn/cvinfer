@@ -4,6 +4,7 @@
 #include "rf_detr/rf_detr.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
@@ -16,6 +17,7 @@ struct cvinfer_model {
     std::unique_ptr<cvinfer::yolo::Detector> detector;
     std::unique_ptr<cvinfer::yolo::Segmentor> segmentor;
     std::unique_ptr<cvinfer::rf_detr::Detector> rf_detr_detector;
+    std::unique_ptr<cvinfer::rf_detr::Segmentor> rf_detr_segmentor;
 };
 
 struct cvinfer_result {
@@ -23,7 +25,8 @@ struct cvinfer_result {
     std::vector<cvinfer::yolo::Detection> detections;
     std::vector<cvinfer::yolo::Segmentation> segmentations;
     std::vector<cvinfer::rf_detr::Detection> rf_detr_detections;
-    cvinfer::yolo::Timing timing{};
+    std::vector<cvinfer::rf_detr::Segmentation> rf_detr_segmentations;
+    cvinfer_timing_t timing{};
 };
 
 namespace {
@@ -98,6 +101,7 @@ cvinfer::rf_detr::Config make_rf_detr_config(const cvinfer_model_config_t* sourc
     if (source->class_count > 0) config.class_count = source->class_count;
     if (source->confidence_threshold >= 0.0F) config.confidence_threshold = source->confidence_threshold;
     if (source->nms_threshold >= 0.0F) config.nms_threshold = source->nms_threshold;
+    if (source->mask_threshold >= 0.0F) config.mask_threshold = source->mask_threshold;
     config.class_agnostic_nms = source->class_agnostic_nms != 0;
     if (source->input_name) config.input_name = source->input_name;
     if (source->output_name) config.output_name = source->output_name;
@@ -171,6 +175,8 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create(
             instance->segmentor = std::make_unique<cvinfer::yolo::Segmentor>(engine_path, yolo_config);
         } else if (model_type == CVINFER_MODEL_RF_DETR_DET) {
             instance->rf_detr_detector = std::make_unique<cvinfer::rf_detr::Detector>(engine_path, make_rf_detr_config(config));
+        } else if (model_type == CVINFER_MODEL_RF_DETR_SEG) {
+            instance->rf_detr_segmentor = std::make_unique<cvinfer::rf_detr::Segmentor>(engine_path, make_rf_detr_config(config));
         } else {
             set_error("Unsupported model type");
             return CVINFER_STATUS_UNSUPPORTED;
@@ -200,6 +206,8 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create_v2(
             instance->segmentor = std::make_unique<cvinfer::yolo::Segmentor>(engine_path, yolo_config);
         } else if (model_type == CVINFER_MODEL_RF_DETR_DET) {
             instance->rf_detr_detector = std::make_unique<cvinfer::rf_detr::Detector>(engine_path, make_rf_detr_config_v2(config));
+        } else if (model_type == CVINFER_MODEL_RF_DETR_SEG) {
+            instance->rf_detr_segmentor = std::make_unique<cvinfer::rf_detr::Segmentor>(engine_path, make_rf_detr_config_v2(config));
         } else {
             set_error("Unsupported model type");
             return CVINFER_STATUS_UNSUPPORTED;
@@ -230,13 +238,19 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_infer_bgr(
         output->type = model->type;
         if (model->type == CVINFER_MODEL_YOLO_DET && model->detector) {
             output->detections = model->detector->infer_image(bgr, width, height, channels);
-            output->timing = model->detector->last_timing();
+            const auto& timing = model->detector->last_timing();
+            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
         } else if (model->type == CVINFER_MODEL_YOLO_SEG && model->segmentor) {
             output->segmentations = model->segmentor->infer_image(bgr, width, height, channels);
-            output->timing = model->segmentor->last_timing();
+            const auto& timing = model->segmentor->last_timing();
+            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
         } else if (model->type == CVINFER_MODEL_RF_DETR_DET && model->rf_detr_detector) {
             output->rf_detr_detections = model->rf_detr_detector->infer_image(bgr, width, height, channels);
             const auto& timing = model->rf_detr_detector->last_timing();
+            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+        } else if (model->type == CVINFER_MODEL_RF_DETR_SEG && model->rf_detr_segmentor) {
+            output->rf_detr_segmentations = model->rf_detr_segmentor->infer_image(bgr, width, height, channels);
+            const auto& timing = model->rf_detr_segmentor->last_timing();
             output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
         } else {
             set_error("Invalid model handle");
@@ -261,6 +275,7 @@ CVINFER_API size_t CVINFER_CALL cvinfer_result_count(const cvinfer_result_t* res
     if (!result) return 0;
     if (result->type == CVINFER_MODEL_YOLO_SEG) return result->segmentations.size();
     if (result->type == CVINFER_MODEL_RF_DETR_DET) return result->rf_detr_detections.size();
+    if (result->type == CVINFER_MODEL_RF_DETR_SEG) return result->rf_detr_segmentations.size();
     return result->detections.size();
 }
 
@@ -290,13 +305,23 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_get_segmentation(
     cvinfer_segmentation_info_t* segmentation) {
     clear_error();
     if (!result || !segmentation) return invalid_argument("result and segmentation are required");
-    if (result->type != CVINFER_MODEL_YOLO_SEG) return invalid_argument("Result is not a segmentation result");
-    if (index >= result->segmentations.size()) return invalid_argument("Segmentation index is out of range");
-    const auto& source = result->segmentations[index];
-    segmentation->box = {source.box.x1, source.box.y1, source.box.x2, source.box.y2, source.box.score, source.box.class_id};
-    segmentation->mask_width = source.mask_width;
-    segmentation->mask_height = source.mask_height;
-    segmentation->mask_bytes = source.mask.size();
+    if (result->type == CVINFER_MODEL_YOLO_SEG) {
+        if (index >= result->segmentations.size()) return invalid_argument("Segmentation index is out of range");
+        const auto& source = result->segmentations[index];
+        segmentation->box = {source.box.x1, source.box.y1, source.box.x2, source.box.y2, source.box.score, source.box.class_id};
+        segmentation->mask_width = source.mask_width;
+        segmentation->mask_height = source.mask_height;
+        segmentation->mask_bytes = source.mask.size();
+    } else if (result->type == CVINFER_MODEL_RF_DETR_SEG) {
+        if (index >= result->rf_detr_segmentations.size()) return invalid_argument("Segmentation index is out of range");
+        const auto& source = result->rf_detr_segmentations[index];
+        segmentation->box = {source.box.x1, source.box.y1, source.box.x2, source.box.y2, source.box.score, source.box.class_id};
+        segmentation->mask_width = source.mask_width;
+        segmentation->mask_height = source.mask_height;
+        segmentation->mask_bytes = source.mask.size();
+    } else {
+        return invalid_argument("Result is not a segmentation result");
+    }
     return CVINFER_STATUS_OK;
 }
 
@@ -308,16 +333,23 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_copy_mask(
     size_t* copied_bytes) {
     clear_error();
     if (!result) return invalid_argument("result is required");
-    if (result->type != CVINFER_MODEL_YOLO_SEG) return invalid_argument("Result is not a segmentation result");
-    if (index >= result->segmentations.size()) return invalid_argument("Segmentation index is out of range");
-    const auto& mask = result->segmentations[index].mask;
-    if (copied_bytes) *copied_bytes = mask.size();
-    if (destination_bytes < mask.size()) {
+    const std::vector<std::uint8_t>* mask = nullptr;
+    if (result->type == CVINFER_MODEL_YOLO_SEG) {
+        if (index >= result->segmentations.size()) return invalid_argument("Segmentation index is out of range");
+        mask = &result->segmentations[index].mask;
+    } else if (result->type == CVINFER_MODEL_RF_DETR_SEG) {
+        if (index >= result->rf_detr_segmentations.size()) return invalid_argument("Segmentation index is out of range");
+        mask = &result->rf_detr_segmentations[index].mask;
+    } else {
+        return invalid_argument("Result is not a segmentation result");
+    }
+    if (copied_bytes) *copied_bytes = mask->size();
+    if (destination_bytes < mask->size()) {
         set_error("Destination mask buffer is too small");
         return CVINFER_STATUS_BUFFER_TOO_SMALL;
     }
-    if (!mask.empty() && !destination) return invalid_argument("Destination mask buffer is required");
-    if (!mask.empty()) std::memcpy(destination, mask.data(), mask.size());
+    if (!mask->empty() && !destination) return invalid_argument("Destination mask buffer is required");
+    if (!mask->empty()) std::memcpy(destination, mask->data(), mask->size());
     return CVINFER_STATUS_OK;
 }
 

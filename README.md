@@ -82,7 +82,7 @@ cmake --build --preset build-ninja-msvc-private-cuda-release
 ## ONNX 转换
 
 ```powershell
-dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.2
+dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.3
 ```
 
 RF-DETR 在 TensorRT 8.6 下使用 FP32 构建；builder 会自动避免错误的 FP16 输出。

@@ -6,7 +6,7 @@ C# 调用 TensorRT native builder，将 ONNX 转为 serialized engine。
 ## 安装
 
 ```powershell
-dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.2
+dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.3
 ```
 
 要求 Windows x64、NVIDIA 驱动和匹配的 TensorRT/CUDA。
@@ -47,7 +47,7 @@ INT8 适用于包含 Q/DQ 节点的 ONNX。
 缺少 runtime 时默认下载并缓存到：
 
 ```text
-%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.1.2\win-x64
+%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.1.3\win-x64
 ```
 
 可配置：

@@ -1,235 +1,82 @@
 # alanxinn_cvinfer
 
-## 项目概览
+TensorRT 推理项目，包含：
 
-本项目将 TensorRT 通用推理能力、YOLO 模型适配、C ABI 动态库和 C# NuGet 封装分层组织。新增模型只需要复用 `core`，实现模型自己的前处理和输出解码，不需要重复编写 TensorRT runtime、context、stream 和显存管理代码。
+- `core`：TensorRT engine、输入输出 tensor、CUDA stream。
+- `yolo`：YOLO 检测/分割前后处理。
+- `rf_detr`：RF-DETR 检测/分割前后处理。
+- `api`：稳定 C ABI 动态库。
+- `tensorrt_builder`：ONNX 转 TensorRT engine。
+- `csharp`：C# P/Invoke、NuGet 和 Demo。
 
-ONNX 转 engine 由独立的 `tensorrt_builder` C++ DLL 和
-`alanxinn.TensorRtOnnxBuilder` C# NuGet 类库负责；该路径直接使用
-`NvOnnxParser`/`IBuilder`，不依赖 `trtexec.exe`。NuGet 包只包含 builder DLL，
-大型 TensorRT/CUDA runtime 首次调用时从 GitHub Release 下载并缓存。
+## NuGet Packages
 
-```text
-C# / C++ 外部应用
-        ↓
-alanxinn_cvinfer.dll
-        ↓
-alanxinn_cvinfer_yolo
-        ↓
-alanxinn_cvinfer_core
-        ↓
-TensorRT / CUDA / OpenCV
-```
-
-可选加速路径：
-
-```text
-alanxinn_cvinfer_yolo
-        ↓（显式选择 CUDA backend 时动态检查）
-alanxinn_cvinfer_cuda.dll
-```
-
-只有使用私有 backend 构建主库时才启用该路径；公开 CPU 构建不会链接或加载 CUDA backend。
-
-## NuGet 开箱即用
-
-C# 应用可以直接从 [NuGet 包页面](https://www.nuget.org/packages/alanxinn.CvinferSharp) 下载并引用 `alanxinn.CvinferSharp` NuGet 包，无需在开发机上
-额外安装或配置复杂的 CUDA、TensorRT、OpenCV 开发环境。NuGet 包已经包含
-运行所需的 `alanxinn_cvinfer.dll`、TensorRT、CUDA Runtime 和 OpenCV Runtime
-DLL，引用类库后即可加载 engine 并执行推理。
-当前 `alanxinn.CvinferSharp` NuGet 包对应 CUDA Runtime 11.8 和 TensorRT Runtime 8.1.6，相关运行库已随包提供。
-
-运行时仍需要满足以下条件：
-
-- Windows x64；
-- 已安装兼容的 NVIDIA 显卡驱动；
-- 准备对应的 TensorRT engine 文件和输入图像；
-- 如果显式选择 CUDA 前处理或后处理，需要使用包含
-  `alanxinn_cvinfer_cuda.dll` 的私有 CUDA NuGet 包；使用 `auto` 时无需该 DLL。
-
-当前 NuGet/C# Demo 支持的模型如下：
-
-| 模型 | 类型参数 | 输出 |
+| Package | Version | Description |
 | --- | --- | --- |
-| YOLO11 Detection | `det` | 检测框、类别、置信度 |
-| YOLO11 Segmentation | `seg` | 检测框、类别、置信度和 Mask |
+| [alanxinn.CvinferSharp](https://www.nuget.org/packages/alanxinn.CvinferSharp) | [![NuGet](https://img.shields.io/nuget/v/alanxinn.CvinferSharp.svg)](https://www.nuget.org/packages/alanxinn.CvinferSharp) | C# TensorRT 推理封装，支持 YOLO/RF-DETR 检测与分割 |
+| [alanxinn.TensorRtOnnxBuilder](https://www.nuget.org/packages/alanxinn.TensorRtOnnxBuilder) | [![NuGet](https://img.shields.io/nuget/v/alanxinn.TensorRtOnnxBuilder.svg)](https://www.nuget.org/packages/alanxinn.TensorRtOnnxBuilder) | C# ONNX 转 TensorRT engine，支持 FP32/FP16/INT8 |
 
-输入宽高由 TensorRT engine 自动读取，固定输入使用固定 shape，动态输入使用
-optimization profile 0 的 `OPT` shape。C# Demo 默认使用
-`--preprocess auto --postprocess auto`。
+## 模型类型
 
-## TensorRT ONNX 转 Engine NuGet
+C# Demo 的 `--type` 只支持：
 
-`alanxinn.TensorRtOnnxBuilder`（当前版本 `0.1.2`）NuGet 包地址：[alanxinn.TensorRtOnnxBuilder](https://www.nuget.org/packages/alanxinn.TensorRtOnnxBuilder)  是独立的 Windows x64 C# 类库，
-通过 `alanxinn_tensorrt_builder.dll` 直接调用 TensorRT C++ API，将 ONNX 模型转换为
-serialized TensorRT engine，不启动 `trtexec.exe`。
+```text
+yolo-det
+yolo-seg
+rf-detr-det
+rf-detr-seg
+```
 
-安装：
+示例：
+
+```powershell
+alanxinn.CvinferDemo.exe `
+  --type rf-detr-seg `
+  --model rfdetr-seg-nano.engine `
+  --img bus.jpg `
+  --warmup 100 `
+  --iterations 1000 `
+  --preprocess auto `
+  --postprocess auto
+```
+
+输入尺寸从 engine 自动读取。`warmup` 不计入统计，`iterations` 为正式统计次数。
+
+RF-DETR 当前前处理、后处理使用 CPU；TensorRT 推理仍在 GPU 上执行。
+显式选择 RF-DETR 的 `cuda` 前后处理会返回不支持错误。
+
+## 构建
+
+普通构建：
+
+```powershell
+cmake --preset ninja-msvc-release
+cmake --build --preset build-ninja-msvc-release
+```
+
+私有 CUDA backend：
+
+```powershell
+cmake --preset ninja-msvc-private-cuda-release
+cmake --build --preset build-ninja-msvc-private-cuda-release
+```
+
+需要配置 `CUDA_ROOT`、`TENSORRT_ROOT`、`OPENCV_ROOT`。
+构建产物位于 `build/<preset>/bin`，ONNX builder 位于
+`build/<preset>/tensorrt_builder`。
+
+## ONNX 转换
 
 ```powershell
 dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.2
 ```
 
-NuGet 包只包含 C# 程序集和 builder DLL。首次转换时，如果本地缺少 TensorRT/CUDA
-Runtime，程序会从 GitHub Release `v0.1.2` 下载并缓存：
+RF-DETR 在 TensorRT 8.6 下使用 FP32 构建；builder 会自动避免错误的 FP16 输出。
 
-```text
-https://github.com/alanxinn/cvinfer/releases/download/v0.1.2/tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.2.zip
-```
+## 约定
 
-Runtime 默认缓存到 `%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.1.2\win-x64`，
-也支持通过 `TensorRtRuntime.DownloadUrl`、`CacheDirectory` 和 `ExpectedSha256` 自定义。
-完整参数和 ONNX 转换示例见
-[TensorRtOnnxBuilder README](csharp/alanxinn.TensorRtOnnxBuilder/README.md)；命令行 Demo
-见 [TensorRtOnnxBuilderDemo README](csharp/alanxinn.TensorRtOnnxBuilderDemo/README.md)。
+- engine 与 TensorRT、CUDA、GPU 架构相关。
+- 模型权重位于 `**/weights/`，不提交 Git。
+- 单个模型句柄默认串行使用；并发推理请创建独立句柄。
 
-## CPU 前后处理基准测试
-
-测试日期：2026-08-06  
-测试设备：NVIDIA GeForce RTX 4060（8 GB，驱动 591.86）；CPU 为 Intel 12490F。TensorRT 推理使用该 NVIDIA GPU，
-前处理和后处理均使用 CPU。
-
-测试条件：
-
-```text
-输入图像：810x1080
-warmup：100 次
-正式统计：1000 次
-检测模型：yolo11n.engine
-分割模型：yolo11n-seg.engine
-```
-
-| 模型 | 阶段 | 平均耗时（ms） | 最小耗时（ms） | 最大耗时（ms） |
-| --- | --- | ---: | ---: | ---: |
-| `yolo11n.engine` | 前处理 | 1.9984 | 1.7884 | 3.0753 |
-| `yolo11n.engine` | TensorRT 推理 | 3.5155 | 2.8160 | 5.9006 |
-| `yolo11n.engine` | 后处理 | 2.0024 | 1.7712 | 2.8704 |
-| `yolo11n.engine` | 总耗时 | 8.3656 | 7.2045 | 11.5039 |
-| `yolo11n-seg.engine` | 前处理 | 1.9867 | 1.7937 | 3.6404 |
-| `yolo11n-seg.engine` | TensorRT 推理 | 4.8961 | 4.2666 | 8.2253 |
-| `yolo11n-seg.engine` | 后处理 | 4.0293 | 3.6666 | 8.6139 |
-| `yolo11n-seg.engine` | 总耗时 | 11.7439 | 10.6901 | 19.4811 |
-
-## 模块文档
-
-- [core：TensorRT 核心库](core/README.md)
-- CUDA backend：私有仓库维护，构建时通过 `ALANXINN_CUDA_BACKEND_DIR` 接入
-- [yolo：YOLO 检测与分割适配库](yolo/README.md)
-- [api：C ABI 动态库接口](api/README.md)
-- [csharp：C# 类库与 Demo](csharp/README.md)
-- [独立 C# TensorRT ONNX 转 engine](csharp/alanxinn.TensorRtOnnxBuilder/README.md)
-
-## 目录结构
-
-```text
-core/                     TensorRT 通用推理、Tensor、CUDA stream 和设备内存
-tensorrt_builder/         TensorRT C++ ONNX parser/builder DLL
-yolo/                     YOLO 前处理、检测/分割解码、NMS、Mask 和 Demo
-api/                      alanxinn_cvinfer.dll 的稳定 C ABI
-csharp/                   C# 类库、NuGet 包和 Demo
-private/cuda_backend/     私有 CUDA 前处理/后处理实现，不提交公开仓库
-test/                     本地测试和生成文件目录
-```
-
-`tensorrt_builder` 的说明见
-[tensorrt_builder/README.md](tensorrt_builder/README.md)；C# API 和可运行 Demo 见
-[csharp/alanxinn.TensorRtOnnxBuilder/README.md](csharp/alanxinn.TensorRtOnnxBuilder/README.md)
-及 [csharp/alanxinn.TensorRtOnnxBuilderDemo/README.md](csharp/alanxinn.TensorRtOnnxBuilderDemo/README.md)。
-
-公开仓库只维护 `core`、`tensorrt_builder`、`yolo`、`api` 和 `csharp`。`private/cuda_backend`
-应作为独立私有仓库或本地私有 checkout 管理，根目录 `.gitignore` 已忽略该目录。
-
-## 构建
-
-### 普通 CPU/Auto 构建
-
-普通构建不会编译 `private/cuda_backend`，`Cuda` backend 在该构建中不可用：
-
-```powershell
-cmake -S . -B build/public-release `
-  -G Ninja `
-  -DCMAKE_BUILD_TYPE=Release `
-  -DCUDA_ROOT="C:/your/path/CUDA/v11.8" `
-  -DTENSORRT_ROOT="C:/your/path/TensorRT-8.1.6_cuda-11.8" `
-  -DOPENCV_ROOT="C:/your/path/opencv"
-cmake --build build/public-release
-```
-
-### 私有 CUDA 构建
-
-内部构建显式传入私有 backend 路径：
-
-```powershell
-cmake -S . -B build/private-cuda-release `
-  -G Ninja `
-  -DBUILD_CUDA_BACKEND=ON `
-  -DALANXINN_CUDA_BACKEND_DIR="C:/your/private/cuda_backend" `
-  -DALANXINN_PUBLIC_YOLO_INCLUDE_DIR="C:/your/project/cvinfer/yolo/include" `
-  -DALANXINN_PUBLIC_CORE_INCLUDE_DIR="C:/your/project/cvinfer/core/include" `
-  -DCUDA_ROOT="C:/your/path/CUDA/v11.8" `
-  -DTENSORRT_ROOT="C:/your/path/TensorRT-8.1.6_cuda-11.8" `
-  -DOPENCV_ROOT="C:/your/path/opencv"
-cmake --build build/private-cuda-release
-```
-
-`yolo` 只依赖公开的 `yolo/yolo_cuda.h` 接口。未启用私有 backend 时，
-项目使用 CPU stub 编译，显式选择 `Cuda` 会返回 backend 缺失错误；启用私有
-backend 后，`alanxinn_cvinfer_cuda.dll` 通过延迟加载提供 CUDA 加速。生成的
-CUDA DLL 会复制到当前构建目录的 `bin/`，导入库位于 `lib/`。
-ONNX 转 engine 所需的 `alanxinn_tensorrt_builder.dll` 及 TensorRT/CUDA 运行时 DLL
-会单独复制到当前构建目录的 `tensorrt_builder/`，避免与常规运行时 DLL 冲突。
-转换器部署白名单为 `nvinfer.dll`、`nvinfer_plugin.dll`、`nvonnxparser.dll`、
-`cudart64_110.dll`、`cublas64_11.dll`、`cublasLt64_11.dll`、`cudnn64_8.dll` 和
-`zlibwapi.dll`。
-
-也可以使用预设：
-
-```powershell
-cmake --preset ninja-msvc-release
-cmake --build --preset build-ninja-msvc-release
-
-cmake --preset ninja-msvc-private-cuda-release
-cmake --build --preset build-ninja-msvc-private-cuda-release
-```
-
-## 主要构建产物
-
-```text
-alanxinn_cvinfer.dll
-alanxinn_cvinfer.lib
-alanxinn_cvinfer_core.lib
-alanxinn_cvinfer_yolo.lib
-alanxinn_tensorrt_builder.dll
-alanxinn_yolo11_det_core_demo.exe
-alanxinn_yolo11_seg_core_demo.exe
-```
-
-启用私有 CUDA backend 后，额外生成：
-
-```text
-alanxinn_cvinfer_cuda.dll
-alanxinn_cvinfer_cuda.lib
-```
-
-## 调用原则
-
-- `core` 不依赖 YOLO 业务语义。
-- `yolo` 通过 `core::TrtSession` 使用 TensorRT。
-- `api` 只负责 C ABI、句柄、错误码和结果转换。
-- C# 通过 `alanxinn_cvinfer.dll` 的 P/Invoke 调用，不直接接触 TensorRT 或 CUDA 类型。
-- 单个模型句柄默认串行使用；并发推理应创建独立模型句柄。
-
-## 当前能力
-
-- YOLO11 检测和分割。
-- CPU/CUDA 前处理和后处理配置。
-- CUDA 前后处理独立 DLL，可选部署，缺失时 CPU/Auto 路径仍可用。
-- 动态输入 shape 和按 tensor 名称选择输入输出；模型输入尺寸自动读取固定
-  shape 或 optimization profile 0 的 `OPT` shape。
-- 检测框、分割 Mask 和前处理/推理/后处理耗时统计。
-- C# 命名参数 Demo、warmup 和 benchmark。
-- `alanxinn.CvinferSharp` 支持 `net472`、`net6.0` 和 `net8.0`。
-- `version.json` 固定主项目、CUDA backend 和 ABI 兼容版本。
-
-详细接口、配置和使用方式请进入上面的模块文档。
-
+详细说明见各模块 README。

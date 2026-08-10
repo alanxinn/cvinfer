@@ -1,18 +1,14 @@
 # tensorrt_builder
 
-`tensorrt_builder` 是 TensorRT ONNX→engine 的 Windows x64 C++ native builder。
-它直接调用 TensorRT 的 `IBuilder`、`IBuilderConfig`、`INetworkDefinition` 和
-`nvonnxparser::IParser`，通过稳定的 C ABI 供 C# NuGet 包调用，不启动
-`trtexec.exe`。
+TensorRT ONNX→engine 的 Windows x64 C++ DLL，通过 C ABI 供 C# 调用。
 
-## 构建要求
+## 要求
 
-- Windows x64、Visual Studio C++17、CMake 3.23 或更高版本；
-- CUDA 11.8；
-- TensorRT 8.6.1.6 CUDA 11.8；
-- OpenCV 配置（根项目 CMake 配置需要）。
-
-预设中的 `CUDA_ROOT`、`TENSORRT_ROOT` 和 `OPENCV_ROOT` 需要按本机安装路径修改。
+- Visual Studio C++17
+- CMake 3.23+
+- CUDA 11.8
+- TensorRT 8.6.1.6
+- OpenCV
 
 ## 构建
 
@@ -21,16 +17,7 @@ cmake --preset ninja-msvc-release
 cmake --build --preset build-ninja-msvc-release
 ```
 
-启用私有 CUDA backend 时使用：
-
-```powershell
-cmake --preset ninja-msvc-private-cuda-release
-cmake --build --preset build-ninja-msvc-private-cuda-release
-```
-
-## 输出目录
-
-ONNX 转换 DLL 和指定运行时依赖单独输出到：
+输出：
 
 ```text
 build/<preset>/tensorrt_builder/
@@ -45,43 +32,21 @@ build/<preset>/tensorrt_builder/
 └─ zlibwapi.dll
 ```
 
-常规 `alanxinn_cvinfer.dll` 和其他推理产物仍在 `build/<preset>/bin`，不会与
-转换器 DLL 混用。CMake 使用固定白名单，不会把 TensorRT/CUDA 目录中的其他 DLL
-复制到转换器输出目录。
-
-NuGet 包只收集 `alanxinn_tensorrt_builder.dll`，其余八个大型 DLL 用于制作 GitHub
-Release runtime ZIP。可在仓库根目录执行：
-
-```powershell
-.\csharp\alanxinn.TensorRtOnnxBuilder\tools\Pack-TensorRtRuntime.ps1 `
-  -SourceDirectory .\build\ninja-msvc-release\tensorrt_builder `
-  -OutputZip .\tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.2.zip
-```
-
 ## C ABI
 
-头文件位于 `include/tensorrt_builder/tensorrt_builder_api.h`，主要接口为：
+头文件：`include/tensorrt_builder/tensorrt_builder_api.h`
 
-- `trt_builder_config_init`：初始化精度、workspace、device 和其他构建选项；
-- `trt_builder_build_onnx`：解析 ONNX、构建 engine 并写入目标文件；
-- `trt_builder_build_onnx_with_progress`：同上，并通过回调报告阶段进度和构建阶段心跳；
-- `trt_builder_last_error`：读取线程本地 UTF-8 错误信息。
+主要接口：
 
-进度回调只表示粗粒度阶段。TensorRT 不提供引擎构建内部的可靠百分比，
-因此构建阶段使用固定百分比和周期性 heartbeat，调用方应显示“进行中”状态。
-
-回调签名：
-
-```cpp
-using trt_builder_progress_callback_t = void (TENSORRT_BUILDER_CALL *)(
-    int32_t stage, int32_t percent, int32_t is_heartbeat,
-    const char* message, void* user_data);
+```text
+trt_builder_config_init
+trt_builder_build_onnx
+trt_builder_build_onnx_with_progress
+trt_builder_last_error
 ```
 
-`is_heartbeat != 0` 表示构建阶段的周期性通知；`message` 仅在回调调用期间有效，
-调用方如需保存必须立即复制。
+动态输入通过 min/opt/max profile 传入。
+`trt_builder_build_onnx_with_progress` 只提供阶段进度和构建心跳。
 
-动态输入通过 min/opt/max optimization profile 传入。INT8 适用于已包含 Q/DQ
-量化节点的 ONNX；自定义 calibrator 需要扩展 native builder API。
-
-engine 与 TensorRT 主版本、CUDA 版本和 GPU 架构相关，不能保证跨环境通用。
+INT8 适用于已包含 Q/DQ 节点的 ONNX。
+engine 与 TensorRT、CUDA 和 GPU 架构相关。

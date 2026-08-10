@@ -13,7 +13,7 @@
 ## 安装
 
 ```powershell
-dotnet add package alanxinn.CvinferSharp --version 0.1.1
+dotnet add package alanxinn.CvinferSharp --version 0.1.2
 ```
 
 ## 示例

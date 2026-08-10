@@ -9,6 +9,20 @@ TensorRT 推理项目，包含：
 - `tensorrt_builder`：ONNX 转 TensorRT engine。
 - `csharp`：C# P/Invoke、NuGet 和 Demo。
 
+## 运行环境
+
+当前构建配置使用：
+
+| 组件 | 版本 |
+| --- | --- |
+| CUDA Toolkit | 11.8 |
+| cuDNN | 8.9.3.28（`cudnn64_8.dll`） |
+| TensorRT | 8.6.1.6（CUDA 11.8） |
+
+需使用与 CUDA、TensorRT 和 GPU 架构匹配的驱动及运行库。
+
+下载 NuGet Package，自带对应运行环境，需手动安装 nvidia 驱动
+
 ## NuGet Packages
 
 | Package | Version | Description |

@@ -33,9 +33,6 @@ alanxinn.CvinferDemo.exe `
 yolo11-det
 yolo11-seg
 yolo11-pose
-yolo26-det
-yolo26-seg
-yolo26-pose
 rf-detr-det
 rf-detr-seg
 ```
@@ -58,7 +55,6 @@ rf-detr-seg
 
 RF-DETR 分割 engine 输出为 `dets`、`labels`、`masks`。
 RF-DETR 前后处理目前仅支持 `auto`/`cpu`。
-YOLO26 end2end 和 Pose 后处理使用 CPU；`preprocess cuda` 仍可用。
 
 ## C# 调用
 

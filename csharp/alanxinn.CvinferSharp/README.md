@@ -4,7 +4,7 @@
 
 提供：
 
-- YOLO11/YOLO26/RF-DETR 检测、分割和 Pose；
+- YOLO11/RF-DETR 检测、分割和 Pose；
 - BGR 图像推理；
 - 检测框、Mask、耗时读取；
 - CPU/CUDA backend 配置；
@@ -13,7 +13,7 @@
 ## 安装
 
 ```powershell
-dotnet add package alanxinn.CvinferSharp --version 0.1.2
+dotnet add package alanxinn.CvinferSharp --version 0.1.3
 ```
 
 ## 示例
@@ -39,8 +39,7 @@ var item = result.GetSegmentation(0);
 var mask = result.CopyMask(0);
 ```
 
-Pose 使用 `CvinferModelType.Yolo11Pose`（或 `Yolo26Pose`），通过
-`result.GetPose(index)` 读取框和关键点。
+Pose 使用 `CvinferModelType.Yolo11Pose`，通过 `result.GetPose(index)` 读取框和关键点。
 
 支持的模型类型：
 
@@ -48,9 +47,6 @@ Pose 使用 `CvinferModelType.Yolo11Pose`（或 `Yolo26Pose`），通过
 CvinferModelType.Yolo11Detection
 CvinferModelType.Yolo11Segmentation
 CvinferModelType.Yolo11Pose
-CvinferModelType.Yolo26Detection
-CvinferModelType.Yolo26Segmentation
-CvinferModelType.Yolo26Pose
 CvinferModelType.RfDetrDetection
 CvinferModelType.RfDetrSegmentation
 ```

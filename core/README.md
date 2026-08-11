@@ -38,7 +38,7 @@ const void* output = session.device_output(output_name);
 ```
 
 动态输入默认使用 TensorRT optimization profile 0 的 `OPT` shape。
-`core` 不包含 YOLO11、YOLO26、RF-DETR 或 OpenCV 业务逻辑。
+`core` 不包含 YOLO11、RF-DETR 或 OpenCV 业务逻辑。
 
 构建产物：
 

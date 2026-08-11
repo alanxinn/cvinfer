@@ -9,10 +9,10 @@
     <AssemblyName>alanxinn.CvinferSharp</AssemblyName>
     <PackageId>alanxinn.CvinferSharp</PackageId>
 
-    <Version>0.1.2</Version>
-    <AssemblyVersion>0.1.2.0</AssemblyVersion>
-    <FileVersion>0.1.2.0</FileVersion>
-    <InformationalVersion>0.1.2</InformationalVersion>
+    <Version>0.1.3</Version>
+    <AssemblyVersion>0.1.3.0</AssemblyVersion>
+    <FileVersion>0.1.3.0</FileVersion>
+    <InformationalVersion>0.1.3</InformationalVersion>
 
     <Authors>alanxinn</Authors>
     <Company>alanxinn</Company>
@@ -22,8 +22,8 @@
     <AssemblyTitle>alanxinn.CvinferSharp</AssemblyTitle>
     <AssemblyDescription>C# managed wrapper for alanxinn_cvinfer.dll.</AssemblyDescription>
 
-    <PackageTags>TensorRT;YOLO11;YOLO26;RF-DETR;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
-    <PackageReleaseNotes>YOLO11/YOLO26/RF-DETR detection, segmentation and pose inference.</PackageReleaseNotes>
+    <PackageTags>TensorRT;YOLO11;RF-DETR;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
+    <PackageReleaseNotes>YOLO11/RF-DETR detection, segmentation and pose inference.</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>

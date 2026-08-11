@@ -1,11 +1,10 @@
-# YOLO11/YOLO26
+# YOLO11
 
-YOLO11/YOLO26 检测、分割和 Pose 适配层，负责：
+YOLO11 检测、分割和 Pose 适配层，负责：
 
 - BGR→RGB、letterbox、归一化和 CHW；
 - YOLO11 检测输出解码和 NMS；
-- YOLO26 end2end `[xyxy, score, class, extra]` 输出解码；
-- YOLO11/YOLO26 prototype 与 mask 系数合成；
+- YOLO11 prototype 与 mask 系数合成；
 - Pose keypoint 坐标还原；
 - 坐标还原和 Mask 裁剪；
 - CPU/CUDA backend 和耗时统计。
@@ -28,7 +27,6 @@ yolo/src/yolo.cpp
 输入尺寸默认从 engine 读取；动态输入使用 profile 0 的 `OPT` shape。
 未构建 CUDA backend 时，`auto`/`cpu` 可用，显式 `cuda` 会报错。
 Pose 后处理当前使用 CPU；可继续使用 CUDA 前处理。
-YOLO26 end2end engine 的后处理请选择 `cpu` 或 `auto`。
 
 ## C++ Demo
 

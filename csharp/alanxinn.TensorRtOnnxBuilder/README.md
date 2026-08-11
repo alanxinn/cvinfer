@@ -42,9 +42,6 @@ var profile = new TensorRtOptimizationProfile
 动态输入的每个输入都必须同时出现在 min/opt/max 中。
 INT8 适用于包含 Q/DQ 节点的 ONNX。
 
-TensorRT 8.6 解析原始 YOLO26 ONNX 可能在 `ReduceMax/TopK` 失败；
-请先使用修正版 ONNX，或升级 TensorRT。
-
 ## Runtime
 
 缺少 runtime 时默认下载并缓存到：

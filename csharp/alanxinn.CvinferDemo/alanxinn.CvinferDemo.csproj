@@ -10,7 +10,7 @@
     <RestoreAdditionalProjectSources>$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\Release</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="alanxinn.CvinferSharp" Version="0.1.2" />
+    <PackageReference Include="alanxinn.CvinferSharp" Version="0.1.3" />
     <PackageReference Include="OpenCvSharp4.Windows" Version="4.13.0.20260627" />
   </ItemGroup>
 </Project>

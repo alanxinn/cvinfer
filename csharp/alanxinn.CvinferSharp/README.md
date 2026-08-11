@@ -4,7 +4,7 @@
 
 提供：
 
-- YOLO/RF-DETR 检测和分割；
+- YOLO11/YOLO26/RF-DETR 检测、分割和 Pose；
 - BGR 图像推理；
 - 检测框、Mask、耗时读取；
 - CPU/CUDA backend 配置；
@@ -23,7 +23,8 @@ using alanxinn;
 
 var config = new CvinferConfig
 {
-    ClassCount = 80,
+    // 0 或负值：按 engine 输出自动推断类别数
+    ClassCount = 0,
     PreprocessBackend = CvinferComputeBackend.Auto,
     PostprocessBackend = CvinferComputeBackend.Auto
 };
@@ -38,11 +39,18 @@ var item = result.GetSegmentation(0);
 var mask = result.CopyMask(0);
 ```
 
+Pose 使用 `CvinferModelType.Yolo11Pose`（或 `Yolo26Pose`），通过
+`result.GetPose(index)` 读取框和关键点。
+
 支持的模型类型：
 
 ```text
-CvinferModelType.YoloDetection
-CvinferModelType.YoloSegmentation
+CvinferModelType.Yolo11Detection
+CvinferModelType.Yolo11Segmentation
+CvinferModelType.Yolo11Pose
+CvinferModelType.Yolo26Detection
+CvinferModelType.Yolo26Segmentation
+CvinferModelType.Yolo26Pose
 CvinferModelType.RfDetrDetection
 CvinferModelType.RfDetrSegmentation
 ```

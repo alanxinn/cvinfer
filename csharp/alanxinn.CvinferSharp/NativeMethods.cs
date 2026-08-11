@@ -38,6 +38,8 @@ internal static class NativeMethods
         public IntPtr PrototypeName;
         public int PreprocessBackend;
         public int PostprocessBackend;
+        public int KeypointCount;
+        public int KeypointDimensions;
     }
     [StructLayout(LayoutKind.Sequential)]
     internal struct NativeBox
@@ -63,6 +65,23 @@ internal static class NativeMethods
         public int MaskWidth;
         public int MaskHeight;
         public UIntPtr MaskBytes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeKeypoint
+    {
+        public float X;
+        public float Y;
+        public float Score;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativePoseInfo
+    {
+        public NativeBox Box;
+        public int KeypointCount;
+        public int KeypointDimensions;
+        public UIntPtr KeypointBytes;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -116,6 +135,14 @@ internal static class NativeMethods
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int cvinfer_result_copy_mask(
+        IntPtr result, UIntPtr index, IntPtr destination, UIntPtr destinationBytes, out UIntPtr copiedBytes);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int cvinfer_result_get_pose(
+        IntPtr result, UIntPtr index, out NativePoseInfo pose);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int cvinfer_result_copy_keypoints(
         IntPtr result, UIntPtr index, IntPtr destination, UIntPtr destinationBytes, out UIntPtr copiedBytes);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]

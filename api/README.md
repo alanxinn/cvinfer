@@ -1,6 +1,6 @@
 # api
 
-`api` 将 `core`、YOLO 和 RF-DETR 封装为稳定 C ABI，供 C# 或其他语言调用。
+`api` 将 `core`、YOLO11/YOLO26 和 RF-DETR 封装为稳定 C ABI，供 C# 或其他语言调用。
 
 ## 主要接口
 
@@ -12,17 +12,26 @@ cvinfer_result_count(result);
 cvinfer_result_get_detection(result, index, &detection);
 cvinfer_result_get_segmentation(result, index, &segmentation);
 cvinfer_result_copy_mask(result, index, buffer, bytes, &copied);
+cvinfer_result_get_pose(result, index, &pose);
+cvinfer_result_copy_keypoints(result, index, buffer, bytes, &copied);
 cvinfer_result_destroy(result);
 cvinfer_model_destroy(model);
 ```
 
 失败时返回状态码，并通过 `cvinfer_last_error()` 获取错误信息。
 
+类别数默认从 engine 输出 shape 自动推断；只有需要限制类别范围时才设置
+`class_count`。
+
 模型类型：
 
 ```text
-CVINFER_MODEL_YOLO_DET
-CVINFER_MODEL_YOLO_SEG
+CVINFER_MODEL_YOLO11_DET
+CVINFER_MODEL_YOLO11_SEG
+CVINFER_MODEL_YOLO11_POSE
+CVINFER_MODEL_YOLO26_DET
+CVINFER_MODEL_YOLO26_SEG
+CVINFER_MODEL_YOLO26_POSE
 CVINFER_MODEL_RF_DETR_DET
 CVINFER_MODEL_RF_DETR_SEG
 ```

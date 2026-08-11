@@ -305,7 +305,3 @@ std::vector<Tensor> TrtSession::outputs() const {
     return result;
 }
 } // namespace cvinfer::core
-
-
-
-

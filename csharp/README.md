@@ -20,7 +20,7 @@ alanxinn.TensorRtOnnxBuilderDemo/   转换 Demo
 
 ```powershell
 alanxinn.CvinferDemo.exe `
-  --type yolo-det `
+  --type yolo11-det `
   --model yolo11n.engine `
   --img bus.jpg `
   --warmup 100 `
@@ -30,8 +30,12 @@ alanxinn.CvinferDemo.exe `
 `--type` 只支持：
 
 ```text
-yolo-det
-yolo-seg
+yolo11-det
+yolo11-seg
+yolo11-pose
+yolo26-det
+yolo26-seg
+yolo26-pose
 rf-detr-det
 rf-detr-seg
 ```
@@ -42,18 +46,19 @@ rf-detr-seg
 --model PATH
 --img PATH
 --output PATH
---classes N
+--classes N                 可选；默认按 engine 输出自动推断
 --preprocess auto|cpu|cuda
 --postprocess auto|cpu|cuda
 --warmup N
 --iterations N
 ```
 
-输入尺寸从 engine 读取。分割模式输出叠加图，非 benchmark 模式还保存
+输入尺寸和类别数默认从 engine 输出读取；分割模式输出叠加图，Pose 模式输出关键点。非 benchmark 模式还保存
 `<output>_mask_<index>.pgm`。
 
 RF-DETR 分割 engine 输出为 `dets`、`labels`、`masks`。
 RF-DETR 前后处理目前仅支持 `auto`/`cpu`。
+YOLO26 end2end 和 Pose 后处理使用 CPU；`preprocess cuda` 仍可用。
 
 ## C# 调用
 
@@ -62,7 +67,7 @@ using alanxinn;
 
 var config = new CvinferConfig
 {
-    ClassCount = 80,
+    ClassCount = 0,
     PreprocessBackend = CvinferComputeBackend.Auto,
     PostprocessBackend = CvinferComputeBackend.Auto
 };

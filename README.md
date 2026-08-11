@@ -3,7 +3,7 @@
 TensorRT 推理项目，包含：
 
 - `core`：TensorRT engine、输入输出 tensor、CUDA stream。
-- `yolo`：YOLO 检测/分割前后处理。
+- `yolo`：YOLO11/YOLO26 检测、分割、Pose 前后处理。
 - `rf_detr`：RF-DETR 检测/分割前后处理。
 - `api`：稳定 C ABI 动态库。
 - `tensorrt_builder`：ONNX 转 TensorRT engine。
@@ -27,16 +27,20 @@ TensorRT 推理项目，包含：
 
 | Package | Version | Description |
 | --- | --- | --- |
-| [alanxinn.CvinferSharp](https://www.nuget.org/packages/alanxinn.CvinferSharp) | [![NuGet](https://img.shields.io/nuget/v/alanxinn.CvinferSharp.svg)](https://www.nuget.org/packages/alanxinn.CvinferSharp) | C# TensorRT 推理封装，支持 YOLO/RF-DETR 检测与分割 |
-| [alanxinn.TensorRtOnnxBuilder](https://www.nuget.org/packages/alanxinn.TensorRtOnnxBuilder) | [![NuGet](https://img.shields.io/nuget/v/alanxinn.TensorRtOnnxBuilder.svg)](https://www.nuget.org/packages/alanxinn.TensorRtOnnxBuilder) | C# ONNX 转 TensorRT engine，支持 FP32/FP16/INT8 |
+| [alanxinn.CvinferSharp](https://www.nuget.org/packages/alanxinn.CvinferSharp) | 0.1.2 | C# TensorRT 推理封装，支持 YOLO11/YOLO26/RF-DETR 检测、分割和 Pose |
+| [alanxinn.TensorRtOnnxBuilder](https://www.nuget.org/packages/alanxinn.TensorRtOnnxBuilder) | 0.1.3 | C# ONNX 转 TensorRT engine，支持 FP32/FP16/INT8 |
 
 ## 模型类型
 
 C# Demo 的 `--type` 只支持：
 
 ```text
-yolo-det
-yolo-seg
+yolo11-det
+yolo11-seg
+yolo11-pose
+yolo26-det
+yolo26-seg
+yolo26-pose
 rf-detr-det
 rf-detr-seg
 ```
@@ -54,7 +58,8 @@ alanxinn.CvinferDemo.exe `
   --postprocess auto
 ```
 
-输入尺寸从 engine 自动读取。`warmup` 不计入统计，`iterations` 为正式统计次数。
+输入尺寸和类别数默认从 engine 输出自动读取；`--classes` 仅用于显式限制类别数。
+`warmup` 不计入统计，`iterations` 为正式统计次数。
 
 RF-DETR 当前前处理、后处理使用 CPU；TensorRT 推理仍在 GPU 上执行。
 显式选择 RF-DETR 的 `cuda` 前后处理会返回不支持错误。
@@ -86,6 +91,9 @@ dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.3
 ```
 
 RF-DETR 在 TensorRT 8.6 下使用 FP32 构建；builder 会自动避免错误的 FP16 输出。
+YOLO26 end2end engine 的后处理使用 `cpu`/`auto`；Pose 后处理使用 CPU。
+TensorRT 8.6 解析原始 YOLO26 ONNX 可能在 `ReduceMax/TopK` 失败，
+需使用已修正版 ONNX 或升级 TensorRT。
 
 ## 约定
 

@@ -25,7 +25,8 @@ struct Segmentation {
 struct Config {
     int input_width{};
     int input_height{};
-    int class_count{80};
+    // <= 0: infer the category count from the exported output shape.
+    int class_count{};
     std::string input_name;
     // Optional output name. The second output is discovered by shape when empty.
     std::string output_name;

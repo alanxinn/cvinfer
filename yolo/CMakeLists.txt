@@ -25,7 +25,7 @@ if(MSVC AND CVINFER_YOLO_HAS_CUDA_BACKEND)
     INTERFACE_LINK_OPTIONS "/DELAYLOAD:alanxinn_cvinfer_cuda.dll")
 endif()
 
-option(BUILD_YOLO_UNIFIED_DEMOS "Build demos for the unified yolo11 adapters" ON)
+option(BUILD_YOLO_UNIFIED_DEMOS "Build demos for the unified YOLO11/YOLO26 adapters" ON)
 if(BUILD_YOLO_UNIFIED_DEMOS)
   add_executable(alanxinn_yolo11_det_core_demo examples/yolo11_det_core_demo.cpp)
   target_link_libraries(alanxinn_yolo11_det_core_demo PRIVATE alanxinn_cvinfer_yolo alanxinn_cvinfer_common)

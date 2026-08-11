@@ -24,7 +24,7 @@ double elapsed_ms(std::chrono::steady_clock::time_point start, std::chrono::stea
 std::vector<float> preprocess_bgr(const std::uint8_t* data, int width, int height, int channels,
                                   const Config& config, Letterbox* transform) {
     if (!data || width <= 0 || height <= 0 || channels < 3 || config.input_width <= 0 || config.input_height <= 0)
-        throw std::invalid_argument("Invalid image or YOLO input configuration");
+        throw std::invalid_argument("Invalid image or YOLO11/YOLO26 input configuration");
     const float scale = (std::min)(static_cast<float>(config.input_width) / width,
                                    static_cast<float>(config.input_height) / height);
     const int resized_w = (std::max)(1, static_cast<int>(std::round(width * scale)));
@@ -83,9 +83,11 @@ std::vector<float> tensor_values(const core::Tensor& tensor) {
 }
 float confidence_value(float value) { return (value >= 0.0F && value <= 1.0F) ? value : 1.0F / (1.0F + std::exp(-value)); }
 std::vector<Detection> decode(const core::Tensor& tensor, const Config& cfg, int image_width, int image_height) {
-    if ((tensor.data_type != core::TensorDataType::Float16 && tensor.data.size() % sizeof(float) != 0) || tensor.shape.size() < 2) return {};
+    if ((tensor.data_type != core::TensorDataType::Float16 && tensor.data_type != core::TensorDataType::Float32) || tensor.shape.size() < 2) return {};
     const int attrs = tensor.shape[tensor.shape.size() - 2] <= tensor.shape.back() ? static_cast<int>(tensor.shape[tensor.shape.size() - 2]) : static_cast<int>(tensor.shape.back());
-    const int boxes = static_cast<int>(tensor.data.size() / sizeof(float)) / attrs;
+    const std::size_t scalar_count = tensor.data_type == core::TensorDataType::Float16
+        ? tensor.data.size() / sizeof(std::uint16_t) : tensor.data.size() / sizeof(float);
+    const int boxes = attrs > 0 ? static_cast<int>(scalar_count / static_cast<std::size_t>(attrs)) : 0;
     if (attrs < 5 || boxes <= 0) return {};
     const bool chw = tensor.shape.back() == boxes;
     const auto values_storage = tensor_values(tensor);
@@ -97,19 +99,33 @@ std::vector<Detection> decode(const core::Tensor& tensor, const Config& cfg, int
     const float pad_x = (cfg.input_width - resized_w) * 0.5F;
     const float pad_y = (cfg.input_height - resized_h) * 0.5F;
     std::vector<Detection> result;
+    // YOLO26 end2end exports top-k rows as [x1,y1,x2,y2,score,class].
+    // YOLO11/raw exports use [cx,cy,w,h,class_scores...].
+    const bool end2end = attrs == 6 && boxes <= 1000;
     for (int i = 0; i < boxes; ++i) {
         auto at = [&](int a) { return chw ? values[static_cast<std::size_t>(a) * boxes + i] : values[static_cast<std::size_t>(i) * attrs + a]; };
-        int best_class = 0; float best_score = confidence_value(at(4));
-        for (int c = 1; c < attrs - 4; ++c) {
-            const float score = confidence_value(at(4 + c));
-            if (score > best_score) { best_score = score; best_class = c; }
+        int best_class = 0;
+        float best_score = 0.0F;
+        float x1{}, y1{}, x2{}, y2{};
+        if (end2end) {
+            best_score = confidence_value(at(4));
+            best_class = static_cast<int>(std::lround(at(5)));
+            x1 = at(0); y1 = at(1); x2 = at(2); y2 = at(3);
+        } else {
+            best_score = confidence_value(at(4));
+            for (int c = 1; c < attrs - 4; ++c) {
+                const float score = confidence_value(at(4 + c));
+                if (score > best_score) { best_score = score; best_class = c; }
+            }
+            const float cx = at(0), cy = at(1), w = at(2), h = at(3);
+            x1 = cx - w * 0.5F; y1 = cy - h * 0.5F;
+            x2 = cx + w * 0.5F; y2 = cy + h * 0.5F;
         }
         if (best_score < cfg.confidence_threshold) continue;
-        const float cx = at(0), cy = at(1), w = at(2), h = at(3);
-        const float x1 = (cx - w * 0.5F - pad_x) / scale;
-        const float y1 = (cy - h * 0.5F - pad_y) / scale;
-        const float x2 = (cx + w * 0.5F - pad_x) / scale;
-        const float y2 = (cy + h * 0.5F - pad_y) / scale;
+        x1 = (x1 - pad_x) / scale;
+        y1 = (y1 - pad_y) / scale;
+        x2 = (x2 - pad_x) / scale;
+        y2 = (y2 - pad_y) / scale;
         Detection d;
         d.box = {
             (std::max)(0.0F, x1), (std::max)(0.0F, y1),
@@ -120,7 +136,11 @@ std::vector<Detection> decode(const core::Tensor& tensor, const Config& cfg, int
         if (d.box.x2 <= d.box.x1 || d.box.y2 <= d.box.y1) continue;
         result.push_back(d);
     }
-    return nms(std::move(result), cfg.nms_threshold);
+    if (end2end) {
+        // YOLO26's one-to-one head already performs score filtering and NMS.
+        return result;
+    }
+    return nms(std::move(result), cfg.nms_threshold, cfg.class_agnostic_nms);
 }
 }
 std::vector<Detection> decode_detections(const core::Tensor& output, const Config& config, int image_width, int image_height) { return decode(output, config, image_width, image_height); }
@@ -140,7 +160,7 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     const core::Tensor* det_tensor = nullptr;
     const core::Tensor* proto_tensor = nullptr;
     for (const auto& tensor : tensors) {
-        if (tensor.data_type != core::TensorDataType::Float16 && tensor.data.size() % sizeof(float) != 0) continue;
+        if (tensor.data_type != core::TensorDataType::Float16 && tensor.data_type != core::TensorDataType::Float32) continue;
         if (tensor.shape.size() == 4 && !proto_tensor) proto_tensor = &tensor;
         else if (tensor.shape.size() >= 2 && !det_tensor) det_tensor = &tensor;
     }
@@ -151,10 +171,18 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     const int attrs = det_tensor->shape.size() >= 3
         ? static_cast<int>(det_tensor->shape[det_tensor->shape.size() - 2] <= det_tensor->shape.back()
             ? det_tensor->shape[det_tensor->shape.size() - 2] : det_tensor->shape.back()) : 0;
+    if (det_tensor->data_type != core::TensorDataType::Float16 && det_tensor->data_type != core::TensorDataType::Float32) return {};
+    if (proto_tensor->data_type != core::TensorDataType::Float16 && proto_tensor->data_type != core::TensorDataType::Float32) return {};
     const std::size_t det_scalar_count = det_tensor->data_type == core::TensorDataType::Float16 ? det_tensor->data.size() / sizeof(std::uint16_t) : det_tensor->data.size() / sizeof(float);
     const int boxes = attrs > 0 ? static_cast<int>(det_scalar_count) / attrs : 0;
-    const int classes = (std::max)(0, (std::min)(cfg.class_count, attrs - 4 - proto_channels));
-    if (attrs <= 4 || boxes <= 0 || classes <= 0 || proto_channels <= 0 || proto_w <= 0 || proto_h <= 0) { return {}; }
+    // YOLO26 segmentation exports exactly [xyxy, score, class, mask_coeffs].
+    // Requiring the exact attribute width avoids mistaking a low-resolution
+    // YOLO11 segmentation tensor for an end-to-end tensor.
+    const bool end2end = boxes <= 1000 && attrs == 6 + proto_channels;
+    // The exported tensor carries one score per class; derive the class count
+    // from its attribute width instead of assuming COCO-80.
+    const int classes = end2end ? 0 : (std::max)(0, attrs - 4 - proto_channels);
+    if (attrs <= 4 || boxes <= 0 || (!end2end && classes <= 0) || proto_channels <= 0 || proto_w <= 0 || proto_h <= 0) { return {}; }
     const bool chw = det_tensor->shape.back() == boxes;
     std::vector<float> det_storage;
     std::vector<float> proto_storage;
@@ -174,38 +202,58 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     }
     const float scale = (std::min)(static_cast<float>(cfg.input_width) / image_width,
                                    static_cast<float>(cfg.input_height) / image_height);
-    const float pad_x = (cfg.input_width - image_width * scale) * 0.5F;
-    const float pad_y = (cfg.input_height - image_height * scale) * 0.5F;
+    const int resized_w = (std::max)(1, static_cast<int>(std::round(image_width * scale)));
+    const int resized_h = (std::max)(1, static_cast<int>(std::round(image_height * scale)));
+    const float pad_x = (cfg.input_width - resized_w) * 0.5F;
+    const float pad_y = (cfg.input_height - resized_h) * 0.5F;
     struct Candidate { Detection detection; std::vector<float> coeffs; };
     std::vector<Candidate> candidates;
     candidates.reserve(static_cast<std::size_t>((std::min)(boxes, 256)));
     for (int i = 0; i < boxes; ++i) {
         auto at = [&](int a) { return chw ? det[static_cast<std::size_t>(a) * boxes + i] : det[static_cast<std::size_t>(i) * attrs + a]; };
-        int class_id = 0; float score = confidence_value(at(4));
-        for (int c = 1; c < classes; ++c) {
-            const float class_score = confidence_value(at(4 + c));
-            if (class_score > score) { score = class_score; class_id = c; }
+        int class_id = 0;
+        float score = confidence_value(at(4));
+        float x1{}, y1{}, x2{}, y2{};
+        int coefficient_start = 0;
+        if (end2end) {
+            class_id = static_cast<int>(std::lround(at(5)));
+            x1 = at(0); y1 = at(1); x2 = at(2); y2 = at(3);
+            coefficient_start = 6;
+        } else {
+            for (int c = 1; c < classes; ++c) {
+                const float class_score = confidence_value(at(4 + c));
+                if (class_score > score) { score = class_score; class_id = c; }
+            }
+            const float cx = at(0), cy = at(1), w = at(2), h = at(3);
+            x1 = cx - w * 0.5F; y1 = cy - h * 0.5F;
+            x2 = cx + w * 0.5F; y2 = cy + h * 0.5F;
+            coefficient_start = 4 + classes;
         }
         if (score < cfg.confidence_threshold) continue;
-        const float x1 = (at(0) - at(2) * 0.5F - pad_x) / scale;
-        const float y1 = (at(1) - at(3) * 0.5F - pad_y) / scale;
-        const float x2 = (at(0) + at(2) * 0.5F - pad_x) / scale;
-        const float y2 = (at(1) + at(3) * 0.5F - pad_y) / scale;
+        x1 = (x1 - pad_x) / scale;
+        y1 = (y1 - pad_y) / scale;
+        x2 = (x2 - pad_x) / scale;
+        y2 = (y2 - pad_y) / scale;
         Candidate item;
         item.detection.box = { (std::max)(0.0F, x1), (std::max)(0.0F, y1),
                                (std::min)(static_cast<float>(image_width), x2),
                                (std::min)(static_cast<float>(image_height), y2), score, class_id };
         item.coeffs.resize(static_cast<std::size_t>(proto_channels));
-        for (int c = 0; c < proto_channels; ++c) item.coeffs[static_cast<std::size_t>(c)] = at(4 + classes + c);
+        for (int c = 0; c < proto_channels; ++c) item.coeffs[static_cast<std::size_t>(c)] = at(coefficient_start + c);
         candidates.push_back(std::move(item));
     }
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.detection.box.score > b.detection.box.score; });
     std::vector<Candidate> kept;
     kept.reserve(candidates.size());
-    for (auto& candidate : candidates) {
-        bool suppressed = false;
-        for (const auto& accepted : kept) if ((cfg.class_agnostic_nms || candidate.detection.box.class_id == accepted.detection.box.class_id) && iou(candidate.detection.box, accepted.detection.box) > cfg.nms_threshold) { suppressed = true; break; }
-        if (!suppressed) kept.push_back(std::move(candidate));
+    if (end2end) {
+        // YOLO26's one-to-one head already performs top-k selection and does not require NMS.
+        kept = std::move(candidates);
+    } else {
+        std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.detection.box.score > b.detection.box.score; });
+        for (auto& candidate : candidates) {
+            bool suppressed = false;
+            for (const auto& accepted : kept) if ((cfg.class_agnostic_nms || candidate.detection.box.class_id == accepted.detection.box.class_id) && iou(candidate.detection.box, accepted.detection.box) > cfg.nms_threshold) { suppressed = true; break; }
+            if (!suppressed) kept.push_back(std::move(candidate));
+        }
     }
     const float proto_stride_x = static_cast<float>(cfg.input_width) / proto_w;
     const float proto_stride_y = static_cast<float>(cfg.input_height) / proto_h;
@@ -286,6 +334,117 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     }
     return result;
 }
+
+std::vector<Pose> decode_poses(const core::Tensor& tensor, const Config& cfg, int image_width, int image_height) {
+    if ((tensor.data_type != core::TensorDataType::Float16 && tensor.data_type != core::TensorDataType::Float32) ||
+        tensor.shape.size() < 2 || image_width <= 0 || image_height <= 0) return {};
+    const int dim_a = static_cast<int>(tensor.shape[tensor.shape.size() - 2]);
+    const int dim_b = static_cast<int>(tensor.shape.back());
+    const int attrs = (std::min)(dim_a, dim_b);
+    const std::size_t scalar_count = tensor.data_type == core::TensorDataType::Float16
+        ? tensor.data.size() / sizeof(std::uint16_t) : tensor.data.size() / sizeof(float);
+    const int boxes = attrs > 0 ? static_cast<int>(scalar_count / static_cast<std::size_t>(attrs)) : 0;
+    if (attrs < 6 || boxes <= 0) return {};
+    const bool chw = dim_b == boxes;
+    const auto storage = tensor_values(tensor);
+    const float* values = storage.data();
+    const float scale = (std::min)(static_cast<float>(cfg.input_width) / image_width,
+                                   static_cast<float>(cfg.input_height) / image_height);
+    const int resized_w = (std::max)(1, static_cast<int>(std::round(image_width * scale)));
+    const int resized_h = (std::max)(1, static_cast<int>(std::round(image_height * scale)));
+    const float pad_x = (cfg.input_width - resized_w) * 0.5F;
+    const float pad_y = (cfg.input_height - resized_h) * 0.5F;
+    int keypoint_dims = cfg.keypoint_dims > 0 ? cfg.keypoint_dims : 3;
+    int keypoint_count = cfg.keypoint_count > 0 ? cfg.keypoint_count : 0;
+    int keypoint_values = keypoint_count * keypoint_dims;
+    // YOLO26 pose exports exactly [xyxy, score, class, keypoints...].
+    // The configured layout is preferred; otherwise infer the common
+    // x/y/score (3-value) layout from the exported attribute width. Raw
+    // YOLO11 pose tensors normally have thousands of anchors and therefore
+    // do not satisfy the end-to-end query-count heuristic.
+    const int end2end_extra = attrs - 6;
+    bool end2end = boxes <= 1000 && end2end_extra > 0 &&
+        (end2end_extra == keypoint_values ||
+         (end2end_extra % 3 == 0 && end2end_extra / 3 <= 128));
+    if (end2end && end2end_extra != keypoint_values) {
+        keypoint_dims = 3;
+        keypoint_count = end2end_extra / 3;
+        keypoint_values = keypoint_count * keypoint_dims;
+    }
+    const int classes = end2end ? 0 : attrs - 4 - keypoint_values;
+    const int required_attrs = end2end ? 6 + keypoint_values : 4 + classes + keypoint_values;
+    if ((!end2end && classes <= 0) || keypoint_count <= 0 || keypoint_dims < 2 || attrs < required_attrs) return {};
+    auto at = [&](int i, int a) {
+        return chw ? values[static_cast<std::size_t>(a) * boxes + i]
+                   : values[static_cast<std::size_t>(i) * attrs + a];
+    };
+    struct Candidate { Pose pose; };
+    std::vector<Candidate> candidates;
+    candidates.reserve(static_cast<std::size_t>((std::min)(boxes, 300)));
+    for (int i = 0; i < boxes; ++i) {
+        int class_id = 0;
+        float score = confidence_value(at(i, 4));
+        int keypoint_start = 0;
+        float x1{}, y1{}, x2{}, y2{};
+        if (end2end) {
+            class_id = static_cast<int>(std::lround(at(i, 5)));
+            x1 = at(i, 0); y1 = at(i, 1); x2 = at(i, 2); y2 = at(i, 3);
+            keypoint_start = 6;
+        } else {
+            for (int c = 1; c < classes; ++c) {
+                const float candidate_score = confidence_value(at(i, 4 + c));
+                if (candidate_score > score) { score = candidate_score; class_id = c; }
+            }
+            const float cx = at(i, 0), cy = at(i, 1), w = at(i, 2), h = at(i, 3);
+            x1 = cx - w * 0.5F; y1 = cy - h * 0.5F;
+            x2 = cx + w * 0.5F; y2 = cy + h * 0.5F;
+            keypoint_start = 4 + classes;
+        }
+        if (score < cfg.confidence_threshold) continue;
+        x1 = (x1 - pad_x) / scale; y1 = (y1 - pad_y) / scale;
+        x2 = (x2 - pad_x) / scale; y2 = (y2 - pad_y) / scale;
+        Pose item;
+        item.keypoint_dims = keypoint_dims;
+        item.box = { (std::max)(0.0F, x1), (std::max)(0.0F, y1),
+                     (std::min)(static_cast<float>(image_width), x2),
+                     (std::min)(static_cast<float>(image_height), y2), score, class_id };
+        if (item.box.x2 <= item.box.x1 || item.box.y2 <= item.box.y1) continue;
+        item.keypoints.resize(static_cast<std::size_t>(keypoint_count));
+        for (int k = 0; k < keypoint_count; ++k) {
+            const int offset = keypoint_start + k * keypoint_dims;
+            const float kx = (at(i, offset) - pad_x) / scale;
+            const float ky = (at(i, offset + 1) - pad_y) / scale;
+            const float ks = keypoint_dims >= 3 ? confidence_value(at(i, offset + 2)) : 1.0F;
+            item.keypoints[static_cast<std::size_t>(k)] = {
+                (std::max)(0.0F, (std::min)(static_cast<float>(image_width), kx)),
+                (std::max)(0.0F, (std::min)(static_cast<float>(image_height), ky)), ks};
+        }
+        candidates.push_back({std::move(item)});
+    }
+    if (!end2end) {
+        std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+            return a.pose.box.score > b.pose.box.score;
+        });
+        std::vector<Candidate> kept;
+        kept.reserve(candidates.size());
+        for (auto& candidate : candidates) {
+            bool suppressed = false;
+            for (const auto& accepted : kept) {
+                if ((cfg.class_agnostic_nms || candidate.pose.box.class_id == accepted.pose.box.class_id) &&
+                    iou(candidate.pose.box, accepted.pose.box) > cfg.nms_threshold) {
+                    suppressed = true;
+                    break;
+                }
+            }
+            if (!suppressed) kept.push_back(std::move(candidate));
+        }
+        candidates = std::move(kept);
+    }
+    std::vector<Pose> result;
+    result.reserve(candidates.size());
+    for (auto& candidate : candidates) result.push_back(std::move(candidate.pose));
+    return result;
+}
 Detector::Detector(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(config) {
     const auto names = session_.input_names();
     if (!names.empty()) {
@@ -337,6 +496,13 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
         : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
     if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
+        const auto output_shape = session_.device_output_shape(output_name);
+        if (output_shape.size() >= 2) {
+            const auto dim_a = output_shape[output_shape.size() - 2];
+            const auto dim_b = output_shape.back();
+            if ((std::min)(dim_a, dim_b) == 6 && (std::max)(dim_a, dim_b) <= 1000)
+                throw std::runtime_error("YOLO26 end2end CUDA postprocessing is not available; use --postprocess cpu or auto");
+        }
         result = cuda_backend::decode_detections_device(session_.device_output(output_name),
             session_.device_output_shape(output_name), session_.device_output_type(output_name),
             config_, image_width, image_height, session_.cuda_stream());
@@ -366,6 +532,13 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
     std::vector<Detection> result;
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
+        const auto output_shape = session_.device_output_shape(output_name);
+        if (output_shape.size() >= 2) {
+            const auto dim_a = output_shape[output_shape.size() - 2];
+            const auto dim_b = output_shape.back();
+            if ((std::min)(dim_a, dim_b) == 6 && (std::max)(dim_a, dim_b) <= 1000)
+                throw std::runtime_error("YOLO26 end2end CUDA postprocessing is not available; use --postprocess cpu or auto");
+        }
         result = cuda_backend::decode_detections_device(session_.device_output(output_name),
             session_.device_output_shape(output_name), session_.device_output_type(output_name),
             config_, image_width, image_height, session_.cuda_stream());
@@ -432,6 +605,14 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
             else if (shape.size() >= 2 && det_name.empty()) det_name = name;
         }
         if (det_name.empty() || proto_name.empty()) throw std::runtime_error("TensorRT segmentation outputs are incomplete");
+        const auto det_shape = session_.device_output_shape(det_name);
+        const auto proto_shape = session_.device_output_shape(proto_name);
+        if (det_shape.size() >= 2 && proto_shape.size() == 4) {
+            const auto attrs = (std::min)(det_shape[det_shape.size() - 2], det_shape.back());
+            const auto boxes = (std::max)(det_shape[det_shape.size() - 2], det_shape.back());
+            if (boxes <= 1000 && attrs == 6 + proto_shape[1])
+                throw std::runtime_error("YOLO26 end2end CUDA postprocessing is not available; use --postprocess cpu or auto");
+        }
         result = cuda_backend::decode_segmentations_device(session_.device_output(det_name),
             session_.device_output_shape(det_name), session_.device_output_type(det_name),
             session_.device_output(proto_name), session_.device_output_shape(proto_name),
@@ -473,6 +654,14 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
             else if (shape.size() >= 2 && det_name.empty()) det_name = name;
         }
         if (det_name.empty() || proto_name.empty()) throw std::runtime_error("TensorRT segmentation outputs are incomplete");
+        const auto det_shape = session_.device_output_shape(det_name);
+        const auto proto_shape = session_.device_output_shape(proto_name);
+        if (det_shape.size() >= 2 && proto_shape.size() == 4) {
+            const auto attrs = (std::min)(det_shape[det_shape.size() - 2], det_shape.back());
+            const auto boxes = (std::max)(det_shape[det_shape.size() - 2], det_shape.back());
+            if (boxes <= 1000 && attrs == 6 + proto_shape[1])
+                throw std::runtime_error("YOLO26 end2end CUDA postprocessing is not available; use --postprocess cpu or auto");
+        }
         if (!cuda_postprocess_) cuda_postprocess_ = cuda_backend::create_segmentation_postprocess_context();
         result = cuda_backend::decode_segmentations_device(session_.device_output(det_name),
             session_.device_output_shape(det_name), session_.device_output_type(det_name),
@@ -491,34 +680,83 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
     timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
     timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
     return result;
-}} // namespace cvinfer::yolo
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+}
+PoseEstimator::PoseEstimator(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(config) {
+    const auto names = session_.input_names();
+    if (!names.empty()) {
+        if (config_.input_name.empty()) config_.input_name = names.front();
+        const auto shape = session_.tensor_shape(config_.input_name);
+        if ((config_.input_width <= 0 || config_.input_height <= 0) &&
+            shape.size() == 4 && shape[2] > 0 && shape[3] > 0) {
+            config_.input_height = static_cast<int>(shape[2]);
+            config_.input_width = static_cast<int>(shape[3]);
+        }
+    }
+}
+std::vector<Pose> PoseEstimator::infer_image(const std::uint8_t* data, int width, int height, int channels) {
+    const auto total_start = std::chrono::steady_clock::now();
+    if (config_.preprocess_backend == ComputeBackend::Cuda) {
+        require_cuda_backend();
+        if (!cuda_preprocess_) cuda_preprocess_ = cuda_backend::create_preprocess_context();
+        Letterbox transform;
+        const auto preprocess_start = std::chrono::steady_clock::now();
+        const float* device_data = cuda_backend::preprocess_bgr(*cuda_preprocess_, data, width, height, channels,
+                                                                config_, session_.cuda_stream(), &transform);
+        timing_.preprocess_ms = elapsed_ms(preprocess_start, std::chrono::steady_clock::now());
+        auto result = infer_device(device_data, cuda_backend::preprocess_bytes(config_), width, height);
+        timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+        return result;
+    }
+    auto chw = preprocess_bgr(data, width, height, channels, config_);
+    timing_.preprocess_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    auto result = infer(chw, width, height);
+    timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    return result;
+}
+std::vector<Pose> PoseEstimator::infer(const std::vector<float>& chw, int image_width, int image_height) {
+    if (chw.empty()) return {};
+    if (config_.postprocess_backend == ComputeBackend::Cuda)
+        throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
+    const auto inputs = session_.input_names();
+    const std::string input_name = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
+    session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
+    session_.set_output_host_copy(true);
+    session_.set_input(input_name, chw.data(), chw.size() * sizeof(float));
+    const auto inference_start = std::chrono::steady_clock::now();
+    session_.infer();
+    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = std::chrono::steady_clock::now();
+    const std::string output_name = !config_.output_name.empty()
+        ? config_.output_name
+        : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
+    if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
+    auto result = decode_poses(session_.get_output(output_name), config_, image_width, image_height);
+    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    return result;
+}
+std::vector<Pose> PoseEstimator::infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height) {
+    if (!device_data || bytes == 0) return {};
+    if (config_.postprocess_backend == ComputeBackend::Cuda)
+        throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
+    const auto inputs = session_.input_names();
+    const std::string input_name = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
+    session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
+    session_.set_output_host_copy(true);
+    session_.set_input_device(input_name, device_data, bytes);
+    const auto inference_start = std::chrono::steady_clock::now();
+    session_.infer();
+    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = std::chrono::steady_clock::now();
+    const std::string output_name = !config_.output_name.empty()
+        ? config_.output_name
+        : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
+    if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
+    auto result = decode_poses(session_.get_output(output_name), config_, image_width, image_height);
+    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    return result;
+}
+} // namespace cvinfer::yolo

@@ -2,10 +2,14 @@ namespace alanxinn;
 
 public enum CvinferModelType
 {
-    YoloDetection = 1,
-    YoloSegmentation = 2,
+    Yolo11Detection = 1,
+    Yolo11Segmentation = 2,
     RfDetrDetection = 3,
-    RfDetrSegmentation = 4
+    RfDetrSegmentation = 4,
+    Yolo11Pose = 5,
+    Yolo26Detection = 6,
+    Yolo26Segmentation = 7,
+    Yolo26Pose = 8
 }
 
 public enum CvinferComputeBackend
@@ -16,15 +20,17 @@ public enum CvinferComputeBackend
 }
 public sealed class CvinferConfig
 {
-    // 由 TensorRT engine 自动读取；保留属性仅用于底层 ABI 兼容。
-    // 设为正值时仍可覆盖 engine shape。
+    // 由 TensorRT engine 自动读取；设为正值时覆盖 engine shape。
     public int InputWidth { get; set; }
     public int InputHeight { get; set; }
-    public int ClassCount { get; set; } = 80;
+    // <= 0 lets the native decoder infer the category count from the engine output.
+    public int ClassCount { get; set; }
     public float ConfidenceThreshold { get; set; } = 0.25f;
     public float NmsThreshold { get; set; } = 0.45f;
     public float MaskThreshold { get; set; } = 0.5f;
     public bool ClassAgnosticNms { get; set; }
+    public int KeypointCount { get; set; } = 17;
+    public int KeypointDimensions { get; set; } = 3;
     public CvinferComputeBackend PreprocessBackend { get; set; } = CvinferComputeBackend.Auto;
     public CvinferComputeBackend PostprocessBackend { get; set; } = CvinferComputeBackend.Auto;
     public string? InputName { get; set; }
@@ -35,6 +41,8 @@ public sealed class CvinferConfig
 public readonly record struct CvinferBox(float X1, float Y1, float X2, float Y2, float Score, int ClassId);
 public readonly record struct CvinferDetection(CvinferBox Box);
 public readonly record struct CvinferSegmentation(CvinferBox Box, int MaskWidth, int MaskHeight, int MaskBytes);
+public readonly record struct CvinferKeypoint(float X, float Y, float Score);
+public readonly record struct CvinferPose(CvinferBox Box, CvinferKeypoint[] Keypoints, int KeypointDimensions = 3);
 public readonly record struct CvinferTiming(double PreprocessMs, double InferenceMs, double PostprocessMs, double TotalMs);
 
 public sealed class CvinferException : Exception

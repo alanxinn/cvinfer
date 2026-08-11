@@ -31,10 +31,14 @@ typedef enum cvinfer_status {
 } cvinfer_status_t;
 
 typedef enum cvinfer_model_type {
-    CVINFER_MODEL_YOLO_DET = 1,
-    CVINFER_MODEL_YOLO_SEG = 2,
+    CVINFER_MODEL_YOLO11_DET = 1,
+    CVINFER_MODEL_YOLO11_SEG = 2,
     CVINFER_MODEL_RF_DETR_DET = 3,
-    CVINFER_MODEL_RF_DETR_SEG = 4
+    CVINFER_MODEL_RF_DETR_SEG = 4,
+    CVINFER_MODEL_YOLO11_POSE = 5,
+    CVINFER_MODEL_YOLO26_DET = 6,
+    CVINFER_MODEL_YOLO26_SEG = 7,
+    CVINFER_MODEL_YOLO26_POSE = 8
 } cvinfer_model_type_t;
 
 typedef enum cvinfer_compute_backend {
@@ -46,6 +50,7 @@ typedef struct cvinfer_model_config {
     /* <= 0: read input dimensions from the TensorRT engine. */
     int32_t input_width;
     int32_t input_height;
+    /* <= 0: infer category count from the engine output shape. */
     int32_t class_count;
     float confidence_threshold;
     float nms_threshold;
@@ -59,6 +64,7 @@ typedef struct cvinfer_model_config_v2 {
     /* <= 0: read input dimensions from the TensorRT engine. */
     int32_t input_width;
     int32_t input_height;
+    /* <= 0: infer category count from the engine output shape. */
     int32_t class_count;
     float confidence_threshold;
     float nms_threshold;
@@ -69,6 +75,9 @@ typedef struct cvinfer_model_config_v2 {
     const char* prototype_name;
     int32_t preprocess_backend;
     int32_t postprocess_backend;
+    /* Pose output layout; defaults to COCO [17,3]. */
+    int32_t keypoint_count;
+    int32_t keypoint_dims;
 } cvinfer_model_config_v2_t;
 
 typedef struct cvinfer_box {
@@ -90,6 +99,19 @@ typedef struct cvinfer_segmentation_info {
     int32_t mask_height;
     size_t mask_bytes;
 } cvinfer_segmentation_info_t;
+
+typedef struct cvinfer_keypoint {
+    float x;
+    float y;
+    float score;
+} cvinfer_keypoint_t;
+
+typedef struct cvinfer_pose_info {
+    cvinfer_box_t box;
+    int32_t keypoint_count;
+    int32_t keypoint_dims;
+    size_t keypoint_bytes;
+} cvinfer_pose_info_t;
 
 typedef struct cvinfer_timing {
     double preprocess_ms;
@@ -142,6 +164,18 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_copy_mask(
     const cvinfer_result_t* result,
     size_t index,
     uint8_t* destination,
+    size_t destination_bytes,
+    size_t* copied_bytes);
+
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_get_pose(
+    const cvinfer_result_t* result,
+    size_t index,
+    cvinfer_pose_info_t* pose);
+
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_result_copy_keypoints(
+    const cvinfer_result_t* result,
+    size_t index,
+    cvinfer_keypoint_t* destination,
     size_t destination_bytes,
     size_t* copied_bytes);
 

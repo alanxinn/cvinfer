@@ -187,7 +187,7 @@ std::vector<Detection> decode_detections(const core::Tensor& boxes_tensor, const
     const int count = (std::min)(box_layout.count, score_layout.count);
     // RF-DETR checkpoints trained on COCO expose 91 logits: 90 categories plus
     // the final no-object channel.  The generic C API historically defaults to
-    // 80 classes for YOLO, so infer the RF-DETR category count from the output
+    // 80 classes for YOLO11/YOLO26, so infer the RF-DETR category count from the output
     // shape instead of silently dropping valid COCO categories.
     int classes = score_layout.channels;
     if (config.class_count > 0 && config.class_count < classes && score_layout.channels != 91)
@@ -432,7 +432,7 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
         else if (!logits) logits = &tensor;
     }
     if (!boxes || !logits) throw std::runtime_error("RF-DETR outputs must contain boxes and logits tensors");
-    // RF-DETR is set-based; unlike YOLO, its exported queries are already de-duplicated.
+    // RF-DETR is set-based; unlike YOLO11/YOLO26, its exported queries are already de-duplicated.
     auto result = decode_detections(*boxes, *logits, config_, image_width, image_height);
     timing_.postprocess_ms = elapsed_ms(post_start, std::chrono::steady_clock::now());
     timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;

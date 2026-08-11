@@ -16,7 +16,7 @@ set(ALANXINN_CUDA_BACKEND_DIR
   CACHE PATH "Private CUDA backend source directory")
 set(ALANXINN_PUBLIC_YOLO_INCLUDE_DIR
   "${CMAKE_CURRENT_SOURCE_DIR}/yolo/include"
-  CACHE PATH "Public YOLO/CUDA interface include directory")
+  CACHE PATH "Public YOLO11/YOLO26/CUDA interface include directory")
 set(ALANXINN_PUBLIC_CORE_INCLUDE_DIR
   "${CMAKE_CURRENT_SOURCE_DIR}/core/include"
   CACHE PATH "Public core interface include directory")

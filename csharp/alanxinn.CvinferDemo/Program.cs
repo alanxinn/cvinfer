@@ -13,24 +13,33 @@ try
 {
     parsed = ParseArguments(args);
     modelTypeName = GetRequiredOption(parsed.Options, "type");
-    if (!modelTypeName.Equals("yolo-det", StringComparison.OrdinalIgnoreCase) &&
-        !modelTypeName.Equals("yolo-seg", StringComparison.OrdinalIgnoreCase) &&
+    if (!modelTypeName.Equals("yolo11-det", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("yolo26-det", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("yolo11-seg", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("yolo26-seg", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("yolo11-pose", StringComparison.OrdinalIgnoreCase) &&
+        !modelTypeName.Equals("yolo26-pose", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("rf-detr-det", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("rf-detr-seg", StringComparison.OrdinalIgnoreCase))
-        throw new ArgumentException("--type must be yolo-det, yolo-seg, rf-detr-det or rf-detr-seg");
+        throw new ArgumentException("--type must be yolo11-det, yolo11-seg, yolo11-pose, yolo26-det, yolo26-seg, yolo26-pose, rf-detr-det or rf-detr-seg");
     enginePath = GetRequiredOption(parsed.Options, "model");
     imagePath = GetRequiredOption(parsed.Options, "img");
     resultPath = GetOption(parsed.Options, "output", "cvinfer_result.jpg");
-    modelType = modelTypeName.Equals("yolo-seg", StringComparison.OrdinalIgnoreCase)
-        ? CvinferModelType.YoloSegmentation
-        : (modelTypeName.Equals("rf-detr-det", StringComparison.OrdinalIgnoreCase)
-            ? CvinferModelType.RfDetrDetection
-            : (modelTypeName.Equals("rf-detr-seg", StringComparison.OrdinalIgnoreCase)
-                ? CvinferModelType.RfDetrSegmentation
-                : CvinferModelType.YoloDetection));
+    modelType = modelTypeName.Trim().ToLowerInvariant() switch
+    {
+        "yolo11-det" => CvinferModelType.Yolo11Detection,
+        "yolo11-seg" => CvinferModelType.Yolo11Segmentation,
+        "yolo11-pose" => CvinferModelType.Yolo11Pose,
+        "yolo26-det" => CvinferModelType.Yolo26Detection,
+        "yolo26-seg" => CvinferModelType.Yolo26Segmentation,
+        "yolo26-pose" => CvinferModelType.Yolo26Pose,
+        "rf-detr-det" => CvinferModelType.RfDetrDetection,
+        "rf-detr-seg" => CvinferModelType.RfDetrSegmentation,
+        _ => throw new ArgumentException("unsupported model type")
+    };
     config = new CvinferConfig
     {
-        ClassCount = ParseIntOption(parsed.Options, "classes", 80),
+        ClassCount = ParseIntOption(parsed.Options, "classes", 0),
         PreprocessBackend = ParseBackend(GetOption(parsed.Options, "preprocess", "auto")),
         PostprocessBackend = ParseBackend(GetOption(parsed.Options, "postprocess", "auto"))
     };
@@ -72,20 +81,22 @@ try
 
         if (result is null) throw new InvalidOperationException("No inference result was produced");
         PrintTimingStats(timings, warmup);
-        Console.WriteLine($"model={modelType} image={input.Cols}x{input.Rows} results={result.Count}");
+        Console.WriteLine($"model={modelTypeName.Trim().ToLowerInvariant()} image={input.Cols}x{input.Rows} results={result.Count}");
 
         using var output = input.Clone();
         var boxesToDraw = new List<(CvinferBox Box, Scalar Color)>();
         for (var i = 0; i < result.Count; ++i)
         {
-            var isSegmentation = modelType == CvinferModelType.YoloSegmentation ||
+            var isSegmentation = modelType == CvinferModelType.Yolo11Segmentation ||
+                modelType == CvinferModelType.Yolo26Segmentation ||
                 modelType == CvinferModelType.RfDetrSegmentation;
+            var isPose = modelType == CvinferModelType.Yolo11Pose ||
+                modelType == CvinferModelType.Yolo26Pose;
             var segmentation = isSegmentation
                 ? result.GetSegmentation(i)
                 : default;
-            var box = isSegmentation
-                ? segmentation.Box
-                : result.GetDetection(i).Box;
+            var pose = isPose ? result.GetPose(i) : default;
+            var box = isSegmentation ? segmentation.Box : (isPose ? pose.Box : result.GetDetection(i).Box);
             var color = ColorForClass(box.ClassId);
             boxesToDraw.Add((box, color));
 
@@ -105,6 +116,11 @@ try
                 {
                     Console.WriteLine($"{i}: class={box.ClassId} score={box.Score:F4} box={box.X1:F1},{box.Y1:F1},{box.X2:F1},{box.Y2:F1} mask={segmentation.MaskWidth}x{segmentation.MaskHeight}");
                 }
+            }
+            else if (isPose)
+            {
+                DrawKeypoints(output, pose.Keypoints, box);
+                Console.WriteLine($"{i}: class={box.ClassId} score={box.Score:F4} box={box.X1:F1},{box.Y1:F1},{box.X2:F1},{box.Y2:F1} keypoints={pose.Keypoints.Length}");
             }
             else
             {
@@ -166,6 +182,49 @@ static Rect ToRect(CvinferBox box, int imageWidth, int imageHeight)
     var right = Math.Clamp((int)MathF.Ceiling(box.X2), left + 1, imageWidth);
     var bottom = Math.Clamp((int)MathF.Ceiling(box.Y2), top + 1, imageHeight);
     return new Rect(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
+}
+
+static void DrawKeypoints(Mat image, IReadOnlyList<CvinferKeypoint> keypoints, CvinferBox box)
+{
+    const float confidenceThreshold = 0.25f;
+    var color = ColorForClass(box.ClassId);
+
+    // COCO/YOLO Pose 17-point skeleton:
+    // nose, eyes, ears, shoulders, elbows, wrists, hips, knees, ankles.
+    int[,] skeleton =
+    {
+        { 0, 1 }, { 0, 2 },
+        { 1, 3 }, { 2, 4 },
+        { 5, 6 },
+        { 5, 7 }, { 7, 9 },
+        { 6, 8 }, { 8, 10 },
+        { 5, 11 }, { 6, 12 },
+        { 11, 12 },
+        { 11, 13 }, { 13, 15 },
+        { 12, 14 }, { 14, 16 }
+    };
+
+    for (var i = 0; i < skeleton.GetLength(0); ++i)
+    {
+        var firstIndex = skeleton[i, 0];
+        var secondIndex = skeleton[i, 1];
+        if (firstIndex >= keypoints.Count || secondIndex >= keypoints.Count) continue;
+        var first = keypoints[firstIndex];
+        var second = keypoints[secondIndex];
+        if (first.Score < confidenceThreshold || second.Score < confidenceThreshold) continue;
+
+        Cv2.Line(image,
+            new Point((int)MathF.Round(first.X), (int)MathF.Round(first.Y)),
+            new Point((int)MathF.Round(second.X), (int)MathF.Round(second.Y)),
+            color, 2, LineTypes.AntiAlias);
+    }
+
+    foreach (var keypoint in keypoints)
+    {
+        if (keypoint.Score < confidenceThreshold) continue;
+        Cv2.Circle(image, new Point((int)MathF.Round(keypoint.X), (int)MathF.Round(keypoint.Y)), 3,
+            color, -1, LineTypes.AntiAlias);
+    }
 }
 
 static Scalar ColorForClass(int classId)

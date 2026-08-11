@@ -48,6 +48,13 @@ install_manifest.txt
 *.engine
 *.plan
 *.onnx
+*.nupkg
+*.snupkg
+*.zip
+cvinfer_result*.jpg
+preprocessed_*.jpg
+result_*.jpg
+*_mask_*.pgm
 test/
 csharp/**/bin/
 csharp/**/obj/

@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace alanxinn;
@@ -32,6 +32,8 @@ public sealed class CvinferModel : IDisposable
                 nativeConfig.ClassAgnosticNms = config.ClassAgnosticNms ? 1 : 0;
                 nativeConfig.PreprocessBackend = (int)config.PreprocessBackend;
                 nativeConfig.PostprocessBackend = (int)config.PostprocessBackend;
+                nativeConfig.KeypointCount = config.KeypointCount;
+                nativeConfig.KeypointDimensions = config.KeypointDimensions;
                 inputName = MarshalUtf8(config.InputName);
                 outputName = MarshalUtf8(config.OutputName);
                 prototypeName = MarshalUtf8(config.PrototypeName);
@@ -138,6 +140,46 @@ public sealed class CvinferResult : IDisposable
                 Handle, new UIntPtr((uint)index), pin.AddrOfPinnedObject(), new UIntPtr((ulong)mask.Length), out var copied));
             if (copied.ToUInt64() != (ulong)mask.Length) Array.Resize(ref mask, checked((int)copied.ToUInt64()));
             return mask;
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
+    public CvinferPose GetPose(int index)
+    {
+        NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_get_pose(
+            Handle, new UIntPtr((uint)index), out var info));
+        var keypoints = CopyKeypoints(index, info.KeypointBytes);
+        return new CvinferPose(ToBox(info.Box), keypoints, info.KeypointDimensions);
+    }
+
+    public CvinferKeypoint[] CopyKeypoints(int index)
+    {
+        NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_get_pose(
+            Handle, new UIntPtr((uint)index), out var info));
+        return CopyKeypoints(index, info.KeypointBytes);
+    }
+
+    private CvinferKeypoint[] CopyKeypoints(int index, UIntPtr expectedBytes)
+    {
+        var bytes = checked((int)expectedBytes.ToUInt64());
+        if (bytes == 0) return Array.Empty<CvinferKeypoint>();
+        var nativeSize = Marshal.SizeOf<NativeMethods.NativeKeypoint>();
+        if (bytes % nativeSize != 0) throw new InvalidDataException("Native keypoint buffer size is invalid");
+        var native = new NativeMethods.NativeKeypoint[bytes / nativeSize];
+        var pin = GCHandle.Alloc(native, GCHandleType.Pinned);
+        try
+        {
+            NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_copy_keypoints(
+                Handle, new UIntPtr((uint)index), pin.AddrOfPinnedObject(), new UIntPtr((ulong)bytes), out var copied));
+            var copiedBytes = checked((int)copied.ToUInt64());
+            if (copiedBytes != bytes) Array.Resize(ref native, copiedBytes / nativeSize);
+            var result = new CvinferKeypoint[native.Length];
+            for (var i = 0; i < native.Length; ++i)
+                result[i] = new CvinferKeypoint(native[i].X, native[i].Y, native[i].Score);
+            return result;
         }
         finally
         {

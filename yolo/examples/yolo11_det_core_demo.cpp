@@ -68,7 +68,8 @@ int main(int argc, char** argv) {
             const auto& box = results[i].box;
             std::cout << i << ": class=" << box.class_id << " score=" << box.score
                       << " box=" << box.x1 << ',' << box.y1 << ',' << box.x2 << ',' << box.y2 << '\n';
-        }        cv::Mat result_image = image.clone();
+        }
+        cv::Mat result_image = image.clone();
         for (const auto& item : results) {
             const auto& b = item.box;
             const cv::Rect rect(static_cast<int>(b.x1), static_cast<int>(b.y1),
@@ -87,10 +88,3 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
-
-
-
-
-
-
-

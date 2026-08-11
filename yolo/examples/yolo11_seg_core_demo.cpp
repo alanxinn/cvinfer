@@ -74,7 +74,8 @@ int main(int argc, char** argv) {
                       << " box=" << item.box.x1 << ',' << item.box.y1 << ',' << item.box.x2 << ',' << item.box.y2
                       << " mask=" << item.mask_width << 'x' << item.mask_height
                       << " foreground=" << foreground << '\n';
-        }        cv::Mat result_image = image.clone();
+        }
+        cv::Mat result_image = image.clone();
         for (const auto& item : results) {
             const auto& b = item.box;
             const cv::Rect rect(static_cast<int>(b.x1), static_cast<int>(b.y1),
@@ -110,15 +111,3 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-

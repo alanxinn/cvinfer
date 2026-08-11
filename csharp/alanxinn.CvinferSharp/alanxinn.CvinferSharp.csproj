@@ -22,8 +22,8 @@
     <AssemblyTitle>alanxinn.CvinferSharp</AssemblyTitle>
     <AssemblyDescription>C# managed wrapper for alanxinn_cvinfer.dll.</AssemblyDescription>
 
-    <PackageTags>TensorRT;YOLO;YOLO11;RF-DETR;CUDA;inference;CSharp;PInvoke</PackageTags>
-    <PackageReleaseNotes>NuGet package for YOLO11/RF-DETR detection and segmentation inference with optional CUDA preprocessing and postprocessing acceleration.</PackageReleaseNotes>
+    <PackageTags>TensorRT;YOLO11;YOLO26;RF-DETR;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
+    <PackageReleaseNotes>YOLO11/YOLO26/RF-DETR detection, segmentation and pose inference.</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>

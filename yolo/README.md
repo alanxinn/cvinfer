@@ -27,6 +27,7 @@ yolo/src/yolo.cpp
 输入尺寸默认从 engine 读取；动态输入使用 profile 0 的 `OPT` shape。
 未构建 CUDA backend 时，`auto`/`cpu` 可用，显式 `cuda` 会报错。
 Pose 后处理当前使用 CPU；可继续使用 CUDA 前处理。
+计时默认关闭，需要统计时将 `Config.enable_timing` 设为 `true`。
 
 ## C++ Demo
 

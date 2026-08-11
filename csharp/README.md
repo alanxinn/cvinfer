@@ -24,7 +24,8 @@ alanxinn.CvinferDemo.exe `
   --model yolo11n.engine `
   --img bus.jpg `
   --warmup 100 `
-  --iterations 1000
+  --iterations 1000 `
+  --timing
 ```
 
 `--type` 只支持：
@@ -48,6 +49,7 @@ rf-detr-seg
 --postprocess auto|cpu|cuda
 --warmup N
 --iterations N
+--timing                    可选；开启预处理、推理和后处理计时
 ```
 
 输入尺寸和类别数默认从 engine 输出读取；分割模式输出叠加图，Pose 模式输出关键点。非 benchmark 模式还保存
@@ -55,6 +57,7 @@ rf-detr-seg
 
 RF-DETR 分割 engine 输出为 `dets`、`labels`、`masks`。
 RF-DETR 前后处理目前仅支持 `auto`/`cpu`。
+计时默认关闭，添加 `--timing` 后才输出耗时统计。
 
 ## C# 调用
 

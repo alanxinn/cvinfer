@@ -48,4 +48,8 @@ C# 通过以下方式加载：
 
 CUDA backend 为可选 DLL。未部署时 `auto`、`cpu` 可用，显式 `cuda` 会报错。
 
+计时默认关闭；模型创建后可调用
+`cvinfer_model_set_timing_enabled(model, 1)` 开启计时，结果中的
+`cvinfer_timing_t` 才会填充耗时数据。
+
 详细 C# 用法见 [csharp/README.md](../csharp/README.md)。

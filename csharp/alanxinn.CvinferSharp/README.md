@@ -39,6 +39,8 @@ var item = result.GetSegmentation(0);
 var mask = result.CopyMask(0);
 ```
 
+`CvinferConfig.EnableTiming` 默认为 `false`；需要读取 `result.Timing` 时设为 `true`。
+
 Pose 使用 `CvinferModelType.Yolo11Pose`，通过 `result.GetPose(index)` 读取框和关键点。
 
 支持的模型类型：

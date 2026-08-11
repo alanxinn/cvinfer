@@ -42,6 +42,19 @@ public sealed class CvinferModel : IDisposable
                 nativeConfig.PrototypeName = prototypeName;
             }
             NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_model_create_v2(path, (int)modelType, ref nativeConfig, out _handle));
+            if (config?.EnableTiming == true)
+            {
+                try
+                {
+                    NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_model_set_timing_enabled(_handle, 1));
+                }
+                catch
+                {
+                    NativeMethods.cvinfer_model_destroy(_handle);
+                    _handle = IntPtr.Zero;
+                    throw;
+                }
+            }
         }
         finally
         {

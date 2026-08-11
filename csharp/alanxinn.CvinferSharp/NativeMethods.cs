@@ -108,6 +108,10 @@ internal static class NativeMethods
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void cvinfer_model_destroy(IntPtr model);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int cvinfer_model_set_timing_enabled(IntPtr model, int enabled);
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int cvinfer_model_create_v2(
         IntPtr enginePathUtf8, int modelType, ref NativeConfigV2 config, out IntPtr model);

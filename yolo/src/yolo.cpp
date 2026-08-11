@@ -458,26 +458,35 @@ Detector::Detector(const std::string& path, Config config) : session_(core::TrtS
     }
 }
 std::vector<Detection> Detector::infer_image(const std::uint8_t* data, int width, int height, int channels) {
-    const auto total_start = std::chrono::steady_clock::now();
+    const bool measure_timing = config_.enable_timing;
+    const auto total_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (config_.preprocess_backend == ComputeBackend::Cuda) {
         require_cuda_backend();
         if (!cuda_preprocess_) cuda_preprocess_ = cuda_backend::create_preprocess_context();
         Letterbox transform;
-        const auto preprocess_start = std::chrono::steady_clock::now();
+        const auto preprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const float* device_data = cuda_backend::preprocess_bgr(*cuda_preprocess_, data, width, height, channels,
                                                                 config_, session_.cuda_stream(), &transform);
-        timing_.preprocess_ms = elapsed_ms(preprocess_start, std::chrono::steady_clock::now());
+        const auto preprocess_ms = measure_timing ? elapsed_ms(preprocess_start, std::chrono::steady_clock::now()) : 0.0;
         auto result = infer_device(device_data, cuda_backend::preprocess_bytes(config_), width, height);
-        timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+        if (measure_timing) {
+            timing_.preprocess_ms = preprocess_ms;
+            timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+        }
         return result;
     }
     auto chw = preprocess_bgr(data, width, height, channels, config_);
-    timing_.preprocess_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    const auto preprocess_ms = measure_timing ? elapsed_ms(total_start, std::chrono::steady_clock::now()) : 0.0;
     auto result = infer(chw, width, height);
-    timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    if (measure_timing) {
+        timing_.preprocess_ms = preprocess_ms;
+        timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    }
     return result;
 }
 std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_width, int image_height) {
+    const bool measure_timing = config_.enable_timing;
+    if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
     const auto inputs = session_.input_names();
@@ -486,10 +495,10 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
     session_.set_input(input_name, chw.data(), chw.size() * sizeof(float));
-    const auto inference_start = std::chrono::steady_clock::now();
+    const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_.infer();
-    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
-    const auto postprocess_start = std::chrono::steady_clock::now();
+    if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     std::vector<Detection> result;
     const std::string output_name = !config_.output_name.empty()
         ? config_.output_name
@@ -509,11 +518,15 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
     } else {
         result = decode_detections(session_.get_output(output_name), config_, image_width, image_height);
     }
-    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
-    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    if (measure_timing) {
+        timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+        timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    }
     return result;
 }
 std::vector<Detection> Detector::infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height) {
+    const bool measure_timing = config_.enable_timing;
+    if (measure_timing) timing_.preprocess_ms = 0.0;
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
     const auto inputs = session_.input_names();
@@ -522,10 +535,10 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
     session_.set_input_device(input_name, device_data, bytes);
-    const auto inference_start = std::chrono::steady_clock::now();
+    const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_.infer();
-    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
-    const auto postprocess_start = std::chrono::steady_clock::now();
+    if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const std::string output_name = !config_.output_name.empty()
         ? config_.output_name
         : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
@@ -545,8 +558,10 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     } else {
         result = decode_detections(session_.get_output(output_name), config_, image_width, image_height);
     }
-    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
-    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    if (measure_timing) {
+        timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+        timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    }
     return result;
 }
 Segmentor::Segmentor(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(config) {
@@ -562,26 +577,35 @@ Segmentor::Segmentor(const std::string& path, Config config) : session_(core::Tr
     }
 }
 std::vector<Segmentation> Segmentor::infer_image(const std::uint8_t* data, int width, int height, int channels) {
-    const auto total_start = std::chrono::steady_clock::now();
+    const bool measure_timing = config_.enable_timing;
+    const auto total_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (config_.preprocess_backend == ComputeBackend::Cuda) {
         require_cuda_backend();
         if (!cuda_preprocess_) cuda_preprocess_ = cuda_backend::create_preprocess_context();
         Letterbox transform;
-        const auto preprocess_start = std::chrono::steady_clock::now();
+        const auto preprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const float* device_data = cuda_backend::preprocess_bgr(*cuda_preprocess_, data, width, height, channels,
                                                                 config_, session_.cuda_stream(), &transform);
-        timing_.preprocess_ms = elapsed_ms(preprocess_start, std::chrono::steady_clock::now());
+        const auto preprocess_ms = measure_timing ? elapsed_ms(preprocess_start, std::chrono::steady_clock::now()) : 0.0;
         auto result = infer_device(device_data, cuda_backend::preprocess_bytes(config_), width, height);
-        timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+        if (measure_timing) {
+            timing_.preprocess_ms = preprocess_ms;
+            timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+        }
         return result;
     }
     auto chw = preprocess_bgr(data, width, height, channels, config_);
-    timing_.preprocess_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    const auto preprocess_ms = measure_timing ? elapsed_ms(total_start, std::chrono::steady_clock::now()) : 0.0;
     auto result = infer(chw, width, height);
-    timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    if (measure_timing) {
+        timing_.preprocess_ms = preprocess_ms;
+        timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    }
     return result;
 }
 std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int image_width, int image_height) {
+    const bool measure_timing = config_.enable_timing;
+    if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
     const auto inputs = session_.input_names();
@@ -590,10 +614,10 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
     session_.set_input(input_name, chw.data(), chw.size() * sizeof(float));
-    const auto inference_start = std::chrono::steady_clock::now();
+    const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_.infer();
-    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
-    const auto postprocess_start = std::chrono::steady_clock::now();
+    if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     std::vector<Segmentation> result;
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
         if (!cuda_postprocess_) cuda_postprocess_ = cuda_backend::create_segmentation_postprocess_context();
@@ -627,11 +651,15 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
         }
         result = decode_segmentations(tensors, config_, image_width, image_height);
     }
-    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
-    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    if (measure_timing) {
+        timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+        timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    }
     return result;
 }
 std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height) {
+    const bool measure_timing = config_.enable_timing;
+    if (measure_timing) timing_.preprocess_ms = 0.0;
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
     const auto inputs = session_.input_names();
@@ -640,10 +668,10 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
     session_.set_input_device(input_name, device_data, bytes);
-    const auto inference_start = std::chrono::steady_clock::now();
+    const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_.infer();
-    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
-    const auto postprocess_start = std::chrono::steady_clock::now();
+    if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     std::vector<Segmentation> result;
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
         std::string det_name = config_.output_name;
@@ -677,8 +705,10 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
         }
         result = decode_segmentations(tensors, config_, image_width, image_height);
     }
-    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
-    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    if (measure_timing) {
+        timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+        timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    }
     return result;
 }
 PoseEstimator::PoseEstimator(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(config) {
@@ -694,26 +724,35 @@ PoseEstimator::PoseEstimator(const std::string& path, Config config) : session_(
     }
 }
 std::vector<Pose> PoseEstimator::infer_image(const std::uint8_t* data, int width, int height, int channels) {
-    const auto total_start = std::chrono::steady_clock::now();
+    const bool measure_timing = config_.enable_timing;
+    const auto total_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (config_.preprocess_backend == ComputeBackend::Cuda) {
         require_cuda_backend();
         if (!cuda_preprocess_) cuda_preprocess_ = cuda_backend::create_preprocess_context();
         Letterbox transform;
-        const auto preprocess_start = std::chrono::steady_clock::now();
+        const auto preprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const float* device_data = cuda_backend::preprocess_bgr(*cuda_preprocess_, data, width, height, channels,
                                                                 config_, session_.cuda_stream(), &transform);
-        timing_.preprocess_ms = elapsed_ms(preprocess_start, std::chrono::steady_clock::now());
+        const auto preprocess_ms = measure_timing ? elapsed_ms(preprocess_start, std::chrono::steady_clock::now()) : 0.0;
         auto result = infer_device(device_data, cuda_backend::preprocess_bytes(config_), width, height);
-        timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+        if (measure_timing) {
+            timing_.preprocess_ms = preprocess_ms;
+            timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+        }
         return result;
     }
     auto chw = preprocess_bgr(data, width, height, channels, config_);
-    timing_.preprocess_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    const auto preprocess_ms = measure_timing ? elapsed_ms(total_start, std::chrono::steady_clock::now()) : 0.0;
     auto result = infer(chw, width, height);
-    timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    if (measure_timing) {
+        timing_.preprocess_ms = preprocess_ms;
+        timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    }
     return result;
 }
 std::vector<Pose> PoseEstimator::infer(const std::vector<float>& chw, int image_width, int image_height) {
+    const bool measure_timing = config_.enable_timing;
+    if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
@@ -723,20 +762,24 @@ std::vector<Pose> PoseEstimator::infer(const std::vector<float>& chw, int image_
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(true);
     session_.set_input(input_name, chw.data(), chw.size() * sizeof(float));
-    const auto inference_start = std::chrono::steady_clock::now();
+    const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_.infer();
-    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
-    const auto postprocess_start = std::chrono::steady_clock::now();
+    if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const std::string output_name = !config_.output_name.empty()
         ? config_.output_name
         : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
     if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
     auto result = decode_poses(session_.get_output(output_name), config_, image_width, image_height);
-    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
-    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    if (measure_timing) {
+        timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+        timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    }
     return result;
 }
 std::vector<Pose> PoseEstimator::infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height) {
+    const bool measure_timing = config_.enable_timing;
+    if (measure_timing) timing_.preprocess_ms = 0.0;
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
@@ -746,17 +789,19 @@ std::vector<Pose> PoseEstimator::infer_device(const void* device_data, std::size
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(true);
     session_.set_input_device(input_name, device_data, bytes);
-    const auto inference_start = std::chrono::steady_clock::now();
+    const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_.infer();
-    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
-    const auto postprocess_start = std::chrono::steady_clock::now();
+    if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const std::string output_name = !config_.output_name.empty()
         ? config_.output_name
         : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
     if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
     auto result = decode_poses(session_.get_output(output_name), config_, image_width, image_height);
-    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
-    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    if (measure_timing) {
+        timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+        timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    }
     return result;
 }
 } // namespace cvinfer::yolo

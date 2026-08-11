@@ -41,7 +41,8 @@ try
     {
         ClassCount = ParseIntOption(parsed.Options, "classes", 0),
         PreprocessBackend = ParseBackend(GetOption(parsed.Options, "preprocess", "auto")),
-        PostprocessBackend = ParseBackend(GetOption(parsed.Options, "postprocess", "auto"))
+        PostprocessBackend = ParseBackend(GetOption(parsed.Options, "postprocess", "auto")),
+        EnableTiming = parsed.Options.ContainsKey("timing")
     };
 }
 catch (Exception error)
@@ -67,20 +68,22 @@ try
         using var warmupResult = model.InferBgr(input.Data, input.Cols, input.Rows, input.Channels());
     }
 
-    var timings = new List<CvinferTiming>(iterations);
+    var timingSamples = parsed.Options.ContainsKey("timing")
+        ? new List<CvinferTiming>(iterations)
+        : null;
     CvinferResult? result = null;
     try
     {
         for (var i = 0; i < iterations; ++i)
         {
             var current = model.InferBgr(input.Data, input.Cols, input.Rows, input.Channels());
-            timings.Add(current.Timing);
+            if (timingSamples is not null) timingSamples.Add(current.Timing);
             result?.Dispose();
             result = current;
         }
 
         if (result is null) throw new InvalidOperationException("No inference result was produced");
-        PrintTimingStats(timings, warmup);
+        if (timingSamples is not null) PrintTimingStats(timingSamples, warmup);
         Console.WriteLine($"model={modelTypeName.Trim().ToLowerInvariant()} image={input.Cols}x{input.Rows} results={result.Count}");
 
         using var output = input.Clone();
@@ -282,8 +285,13 @@ static ParsedArguments ParseArguments(string[] args)
         if (key is "input-width" or "input-height")
             throw new ArgumentException($"{token} is no longer supported; input size is read from the TensorRT engine");
         if (key is not ("type" or "model" or "img" or "output" or "classes" or
-            "preprocess" or "postprocess" or "warmup" or "iterations"))
+            "preprocess" or "postprocess" or "warmup" or "iterations" or "timing"))
             throw new ArgumentException($"unknown option: {token}");
+        if (key == "timing")
+        {
+            parsed.Options[key] = "true";
+            continue;
+        }
         if (string.IsNullOrWhiteSpace(key) || i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
             throw new ArgumentException($"option requires a value: {token}");
         parsed.Options[key] = args[++i];

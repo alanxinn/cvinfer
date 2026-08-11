@@ -29,6 +29,7 @@ int main(int argc, char** argv) {
         if (argc > 5) config.class_count = std::stoi(argv[5]);
         if (argc > 10) config.preprocess_backend = cvinfer::yolo::demo::parse_backend(argv[10]);
         if (argc > 11) config.postprocess_backend = cvinfer::yolo::demo::parse_backend(argv[11]);
+        config.enable_timing = true;
         cvinfer::yolo::Segmentor segmentor(argv[1], config);
         const cv::Mat image = cv::imread(argv[2], cv::IMREAD_COLOR);
         if (image.empty()) {

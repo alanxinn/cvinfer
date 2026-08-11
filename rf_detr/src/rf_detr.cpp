@@ -394,15 +394,21 @@ Detector::Detector(const std::string& path, Config config) : session_(core::TrtS
 std::vector<Detection> Detector::infer_image(const std::uint8_t* data, int width, int height, int channels) {
     if (config_.preprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("RF-DETR CUDA preprocessing is not available; use --preprocess cpu or auto");
-    const auto start = std::chrono::steady_clock::now();
+    const bool measure_timing = config_.enable_timing;
+    const auto start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     auto input = preprocess_bgr(data, width, height, channels, config_);
-    timing_.preprocess_ms = elapsed_ms(start, std::chrono::steady_clock::now());
+    const auto preprocess_ms = measure_timing ? elapsed_ms(start, std::chrono::steady_clock::now()) : 0.0;
     auto result = infer(input, width, height);
-    timing_.total_ms = elapsed_ms(start, std::chrono::steady_clock::now());
+    if (measure_timing) {
+        timing_.preprocess_ms = preprocess_ms;
+        timing_.total_ms = elapsed_ms(start, std::chrono::steady_clock::now());
+    }
     return result;
 }
 
 std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_width, int image_height) {
+    const bool measure_timing = config_.enable_timing;
+    if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("RF-DETR CUDA postprocessing is not available; use --postprocess cpu or auto");
@@ -412,10 +418,10 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
     session_.set_shape(input, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(true);
     session_.set_input(input, chw.data(), chw.size() * sizeof(float));
-    const auto inference_start = std::chrono::steady_clock::now();
+    const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_.infer();
-    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
-    const auto post_start = std::chrono::steady_clock::now();
+    if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto post_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const auto names = session_.output_names();
     const core::Tensor* boxes = nullptr; const core::Tensor* logits = nullptr;
     std::vector<core::Tensor> tensors;
@@ -434,8 +440,10 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
     if (!boxes || !logits) throw std::runtime_error("RF-DETR outputs must contain boxes and logits tensors");
     // RF-DETR is set-based; unlike YOLO11/YOLO26, its exported queries are already de-duplicated.
     auto result = decode_detections(*boxes, *logits, config_, image_width, image_height);
-    timing_.postprocess_ms = elapsed_ms(post_start, std::chrono::steady_clock::now());
-    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    if (measure_timing) {
+        timing_.postprocess_ms = elapsed_ms(post_start, std::chrono::steady_clock::now());
+        timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    }
     return result;
 }
 
@@ -455,15 +463,21 @@ Segmentor::Segmentor(const std::string& path, Config config)
 std::vector<Segmentation> Segmentor::infer_image(const std::uint8_t* data, int width, int height, int channels) {
     if (config_.preprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("RF-DETR CUDA preprocessing is not available; use --preprocess cpu or auto");
-    const auto total_start = std::chrono::steady_clock::now();
+    const bool measure_timing = config_.enable_timing;
+    const auto total_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     auto input = preprocess_bgr(data, width, height, channels, config_);
-    timing_.preprocess_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    const auto preprocess_ms = measure_timing ? elapsed_ms(total_start, std::chrono::steady_clock::now()) : 0.0;
     auto result = infer(input, width, height);
-    timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    if (measure_timing) {
+        timing_.preprocess_ms = preprocess_ms;
+        timing_.total_ms = elapsed_ms(total_start, std::chrono::steady_clock::now());
+    }
     return result;
 }
 
 std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int image_width, int image_height) {
+    const bool measure_timing = config_.enable_timing;
+    if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("RF-DETR CUDA postprocessing is not available; use --postprocess cpu or auto");
@@ -473,14 +487,16 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
     session_.set_shape(input, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(true);
     session_.set_input(input, chw.data(), chw.size() * sizeof(float));
-    const auto inference_start = std::chrono::steady_clock::now();
+    const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_.infer();
-    timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
-    const auto postprocess_start = std::chrono::steady_clock::now();
+    if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
+    const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const auto outputs = session_.outputs();
     auto result = decode_segmentations(outputs, config_, image_width, image_height);
-    timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
-    timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    if (measure_timing) {
+        timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
+        timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
+    }
     return result;
 }
 

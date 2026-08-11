@@ -14,6 +14,7 @@
 
 struct cvinfer_model {
     cvinfer_model_type_t type{};
+    bool timing_enabled{};
     std::unique_ptr<cvinfer::yolo::Detector> detector;
     std::unique_ptr<cvinfer::yolo::Segmentor> segmentor;
     std::unique_ptr<cvinfer::yolo::PoseEstimator> pose_estimator;
@@ -232,6 +233,29 @@ CVINFER_API void CVINFER_CALL cvinfer_model_destroy(cvinfer_model_t* model) {
     delete model;
 }
 
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_set_timing_enabled(
+    cvinfer_model_t* model,
+    int32_t enabled) {
+    clear_error();
+    if (!model) return invalid_argument("model is required");
+    const bool value = enabled != 0;
+    if (model->detector) {
+        model->detector->set_timing_enabled(value);
+    } else if (model->segmentor) {
+        model->segmentor->set_timing_enabled(value);
+    } else if (model->pose_estimator) {
+        model->pose_estimator->set_timing_enabled(value);
+    } else if (model->rf_detr_detector) {
+        model->rf_detr_detector->set_timing_enabled(value);
+    } else if (model->rf_detr_segmentor) {
+        model->rf_detr_segmentor->set_timing_enabled(value);
+    } else {
+        return invalid_argument("model handle is invalid");
+    }
+    model->timing_enabled = value;
+    return CVINFER_STATUS_OK;
+}
+
 CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_infer_bgr(
     cvinfer_model_t* model,
     const uint8_t* bgr,
@@ -248,24 +272,34 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_infer_bgr(
         output->type = model->type;
         if ((model->type == CVINFER_MODEL_YOLO11_DET || model->type == CVINFER_MODEL_YOLO26_DET) && model->detector) {
             output->detections = model->detector->infer_image(bgr, width, height, channels);
-            const auto& timing = model->detector->last_timing();
-            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            if (model->timing_enabled) {
+                const auto& timing = model->detector->last_timing();
+                output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            }
         } else if ((model->type == CVINFER_MODEL_YOLO11_SEG || model->type == CVINFER_MODEL_YOLO26_SEG) && model->segmentor) {
             output->segmentations = model->segmentor->infer_image(bgr, width, height, channels);
-            const auto& timing = model->segmentor->last_timing();
-            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            if (model->timing_enabled) {
+                const auto& timing = model->segmentor->last_timing();
+                output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            }
         } else if ((model->type == CVINFER_MODEL_YOLO11_POSE || model->type == CVINFER_MODEL_YOLO26_POSE) && model->pose_estimator) {
             output->poses = model->pose_estimator->infer_image(bgr, width, height, channels);
-            const auto& timing = model->pose_estimator->last_timing();
-            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            if (model->timing_enabled) {
+                const auto& timing = model->pose_estimator->last_timing();
+                output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            }
         } else if (model->type == CVINFER_MODEL_RF_DETR_DET && model->rf_detr_detector) {
             output->rf_detr_detections = model->rf_detr_detector->infer_image(bgr, width, height, channels);
-            const auto& timing = model->rf_detr_detector->last_timing();
-            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            if (model->timing_enabled) {
+                const auto& timing = model->rf_detr_detector->last_timing();
+                output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            }
         } else if (model->type == CVINFER_MODEL_RF_DETR_SEG && model->rf_detr_segmentor) {
             output->rf_detr_segmentations = model->rf_detr_segmentor->infer_image(bgr, width, height, channels);
-            const auto& timing = model->rf_detr_segmentor->last_timing();
-            output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            if (model->timing_enabled) {
+                const auto& timing = model->rf_detr_segmentor->last_timing();
+                output->timing = {timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms, timing.total_ms};
+            }
         } else {
             set_error("Invalid model handle");
             return CVINFER_STATUS_INVALID_ARGUMENT;

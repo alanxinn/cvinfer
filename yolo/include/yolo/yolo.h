@@ -36,6 +36,7 @@ struct Config {
     int keypoint_dims{3};
     ComputeBackend preprocess_backend{ComputeBackend::Auto};
     ComputeBackend postprocess_backend{ComputeBackend::Auto};
+    bool enable_timing{false};
 };
 struct Letterbox {
     float scale{1.0F};
@@ -65,6 +66,7 @@ public:
     Detector(const std::string& engine_path, Config config = {});
     std::vector<Detection> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Detection> infer_image(const std::uint8_t* data, int width, int height, int channels);
+    void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
     const Timing& last_timing() const noexcept { return timing_; }
 private:
     std::vector<Detection> infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height);
@@ -78,6 +80,7 @@ public:
     Segmentor(const std::string& engine_path, Config config = {});
     std::vector<Segmentation> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Segmentation> infer_image(const std::uint8_t* data, int width, int height, int channels);
+    void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
     const Timing& last_timing() const noexcept { return timing_; }
 private:
     std::vector<Segmentation> infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height);
@@ -92,6 +95,7 @@ public:
     PoseEstimator(const std::string& engine_path, Config config = {});
     std::vector<Pose> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Pose> infer_image(const std::uint8_t* data, int width, int height, int channels);
+    void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
     const Timing& last_timing() const noexcept { return timing_; }
 private:
     std::vector<Pose> infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height);

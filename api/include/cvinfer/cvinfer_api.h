@@ -131,6 +131,10 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create(
     cvinfer_model_t** model);
 
 CVINFER_API void CVINFER_CALL cvinfer_model_destroy(cvinfer_model_t* model);
+/* Timing is disabled by default; pass enabled != 0 to collect inference timing. */
+CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_set_timing_enabled(
+    cvinfer_model_t* model,
+    int32_t enabled);
 CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create_v2(
     const char* engine_path,
     cvinfer_model_type_t model_type,

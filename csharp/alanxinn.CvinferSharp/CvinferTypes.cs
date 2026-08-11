@@ -33,6 +33,7 @@ public sealed class CvinferConfig
     public int KeypointDimensions { get; set; } = 3;
     public CvinferComputeBackend PreprocessBackend { get; set; } = CvinferComputeBackend.Auto;
     public CvinferComputeBackend PostprocessBackend { get; set; } = CvinferComputeBackend.Auto;
+    public bool EnableTiming { get; set; }
     public string? InputName { get; set; }
     public string? OutputName { get; set; }
     public string? PrototypeName { get; set; }

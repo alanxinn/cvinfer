@@ -38,6 +38,7 @@ struct Config {
     bool letterbox{false};
     ComputeBackend preprocess_backend{ComputeBackend::Auto};
     ComputeBackend postprocess_backend{ComputeBackend::Auto};
+    bool enable_timing{false};
 };
 
 struct Timing {
@@ -60,6 +61,7 @@ public:
     Detector(const std::string& engine_path, Config config = {});
     std::vector<Detection> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Detection> infer_image(const std::uint8_t* data, int width, int height, int channels);
+    void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
     const Timing& last_timing() const noexcept { return timing_; }
 
 private:
@@ -73,6 +75,7 @@ public:
     Segmentor(const std::string& engine_path, Config config = {});
     std::vector<Segmentation> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Segmentation> infer_image(const std::uint8_t* data, int width, int height, int channels);
+    void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
     const Timing& last_timing() const noexcept { return timing_; }
 
 private:

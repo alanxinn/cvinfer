@@ -52,11 +52,13 @@ alanxinn.CvinferDemo.exe `
   --warmup 100 `
   --iterations 1000 `
   --preprocess auto `
-  --postprocess auto
+  --postprocess auto `
+  --timing
 ```
 
 输入尺寸和类别数默认从 engine 输出自动读取；`--classes` 仅用于显式限制类别数。
 `warmup` 不计入统计，`iterations` 为正式统计次数。
+计时默认关闭，需要输出耗时统计时添加 `--timing`。
 
 RF-DETR 当前前处理、后处理使用 CPU；TensorRT 推理仍在 GPU 上执行。
 显式选择 RF-DETR 的 `cuda` 前后处理会返回不支持错误。

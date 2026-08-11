@@ -14,14 +14,11 @@ try
     parsed = ParseArguments(args);
     modelTypeName = GetRequiredOption(parsed.Options, "type");
     if (!modelTypeName.Equals("yolo11-det", StringComparison.OrdinalIgnoreCase) &&
-        !modelTypeName.Equals("yolo26-det", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("yolo11-seg", StringComparison.OrdinalIgnoreCase) &&
-        !modelTypeName.Equals("yolo26-seg", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("yolo11-pose", StringComparison.OrdinalIgnoreCase) &&
-        !modelTypeName.Equals("yolo26-pose", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("rf-detr-det", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("rf-detr-seg", StringComparison.OrdinalIgnoreCase))
-        throw new ArgumentException("--type must be yolo11-det, yolo11-seg, yolo11-pose, yolo26-det, yolo26-seg, yolo26-pose, rf-detr-det or rf-detr-seg");
+        throw new ArgumentException("--type must be yolo11-det, yolo11-seg, yolo11-pose, rf-detr-det or rf-detr-seg");
     enginePath = GetRequiredOption(parsed.Options, "model");
     imagePath = GetRequiredOption(parsed.Options, "img");
     resultPath = GetOption(parsed.Options, "output", "cvinfer_result.jpg");
@@ -30,9 +27,6 @@ try
         "yolo11-det" => CvinferModelType.Yolo11Detection,
         "yolo11-seg" => CvinferModelType.Yolo11Segmentation,
         "yolo11-pose" => CvinferModelType.Yolo11Pose,
-        "yolo26-det" => CvinferModelType.Yolo26Detection,
-        "yolo26-seg" => CvinferModelType.Yolo26Segmentation,
-        "yolo26-pose" => CvinferModelType.Yolo26Pose,
         "rf-detr-det" => CvinferModelType.RfDetrDetection,
         "rf-detr-seg" => CvinferModelType.RfDetrSegmentation,
         _ => throw new ArgumentException("unsupported model type")
@@ -91,10 +85,8 @@ try
         for (var i = 0; i < result.Count; ++i)
         {
             var isSegmentation = modelType == CvinferModelType.Yolo11Segmentation ||
-                modelType == CvinferModelType.Yolo26Segmentation ||
                 modelType == CvinferModelType.RfDetrSegmentation;
-            var isPose = modelType == CvinferModelType.Yolo11Pose ||
-                modelType == CvinferModelType.Yolo26Pose;
+            var isPose = modelType == CvinferModelType.Yolo11Pose;
             var segmentation = isSegmentation
                 ? result.GetSegmentation(i)
                 : default;

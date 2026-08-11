@@ -6,10 +6,7 @@ public enum CvinferModelType
     Yolo11Segmentation = 2,
     RfDetrDetection = 3,
     RfDetrSegmentation = 4,
-    Yolo11Pose = 5,
-    Yolo26Detection = 6,
-    Yolo26Segmentation = 7,
-    Yolo26Pose = 8
+    Yolo11Pose = 5
 }
 
 public enum CvinferComputeBackend

@@ -36,7 +36,11 @@ public:
     void set_output_host_copy(bool enabled);
     void infer();
     Tensor get_output(const std::string& name) const;
+    // Returns a view valid until the next infer() call on this session.
+    const Tensor& get_output_ref(const std::string& name) const;
     std::vector<Tensor> outputs() const;
+    // Returns views valid until the next infer() call on this session.
+    std::vector<const Tensor*> output_refs() const;
     const void* device_output(const std::string& name) const;
     std::vector<int64_t> device_output_shape(const std::string& name) const;
     TensorDataType device_output_type(const std::string& name) const;

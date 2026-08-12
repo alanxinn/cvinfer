@@ -59,6 +59,7 @@ std::vector<float> preprocess_bgr(const std::uint8_t* data, int width, int heigh
 std::vector<Detection> nms(std::vector<Detection> candidates, float threshold, bool class_agnostic = false);
 std::vector<Detection> decode_detections(const core::Tensor& output, const Config& config, int image_width, int image_height);
 std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& outputs, const Config& config, int image_width, int image_height);
+std::vector<Segmentation> decode_segmentations(const std::vector<const core::Tensor*>& outputs, const Config& config, int image_width, int image_height);
 std::vector<Pose> decode_poses(const core::Tensor& output, const Config& config, int image_width, int image_height);
 
 class Detector {
@@ -86,6 +87,7 @@ private:
     std::vector<Segmentation> infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height);
     core::TrtSession session_;
     Config config_;
+    std::vector<std::string> output_names_;
     Timing timing_;
     std::shared_ptr<cuda_backend::PreprocessContext> cuda_preprocess_;
     std::shared_ptr<cuda_backend::SegmentationPostprocessContext> cuda_postprocess_;

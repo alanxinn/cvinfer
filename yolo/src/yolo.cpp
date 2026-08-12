@@ -32,18 +32,28 @@ std::vector<float> preprocess_bgr(const std::uint8_t* data, int width, int heigh
     const float pad_x = (config.input_width - resized_w) * 0.5F;
     const float pad_y = (config.input_height - resized_h) * 0.5F;
     if (transform) *transform = {scale, pad_x, pad_y, width, height};
-    std::vector<float> chw(static_cast<std::size_t>(3) * config.input_width * config.input_height, 114.0F / 255.0F);
+    const std::size_t plane = static_cast<std::size_t>(config.input_width) * config.input_height;
+    std::vector<float> chw(plane * 3, 114.0F / 255.0F);
+    std::vector<int> source_x(static_cast<std::size_t>(resized_w));
+    std::vector<int> destination_x(static_cast<std::size_t>(resized_w));
+    for (int x = 0; x < resized_w; ++x) {
+        source_x[static_cast<std::size_t>(x)] = (std::min)(width - 1, static_cast<int>(x / scale));
+        destination_x[static_cast<std::size_t>(x)] =
+            (std::min)(config.input_width - 1, (std::max)(0, static_cast<int>(x + pad_x)));
+    }
     for (int y = 0; y < resized_h; ++y) {
         const int sy = (std::min)(height - 1, static_cast<int>(y / scale));
+        const int dy = (std::min)(config.input_height - 1, (std::max)(0, static_cast<int>(y + pad_y)));
+        const auto* source_row = data + static_cast<std::size_t>(sy) * width * channels;
+        float* red_row = chw.data() + static_cast<std::size_t>(dy) * config.input_width;
+        float* green_row = red_row + plane;
+        float* blue_row = green_row + plane;
         for (int x = 0; x < resized_w; ++x) {
-            const int sx = (std::min)(width - 1, static_cast<int>(x / scale));
-            const auto* pixel = data + (static_cast<std::size_t>(sy) * width + sx) * channels;
-            const int dx = (std::min)(config.input_width - 1, (std::max)(0, static_cast<int>(x + pad_x)));
-            const int dy = (std::min)(config.input_height - 1, (std::max)(0, static_cast<int>(y + pad_y)));
-            const std::size_t plane = static_cast<std::size_t>(config.input_width) * config.input_height;
-            chw[static_cast<std::size_t>(dy) * config.input_width + dx] = pixel[2] / 255.0F;
-            chw[plane + static_cast<std::size_t>(dy) * config.input_width + dx] = pixel[1] / 255.0F;
-            chw[2 * plane + static_cast<std::size_t>(dy) * config.input_width + dx] = pixel[0] / 255.0F;
+            const auto* pixel = source_row + static_cast<std::size_t>(source_x[static_cast<std::size_t>(x)]) * channels;
+            const int dx = destination_x[static_cast<std::size_t>(x)];
+            red_row[dx] = pixel[2] / 255.0F;
+            green_row[dx] = pixel[1] / 255.0F;
+            blue_row[dx] = pixel[0] / 255.0F;
         }
     }
     return chw;
@@ -57,6 +67,16 @@ float iou(const Box& a, const Box& b) {
     const float area_a = (std::max)(0.0f, a.x2 - a.x1) * (std::max)(0.0f, a.y2 - a.y1);
     const float area_b = (std::max)(0.0f, b.x2 - b.x1) * (std::max)(0.0f, b.y2 - b.y1);
     return inter > 0.0f && area_a + area_b - inter > 0.0f ? inter / (area_a + area_b - inter) : 0.0f;
+}
+float box_area(const Box& box) {
+    return (std::max)(0.0F, box.x2 - box.x1) * (std::max)(0.0F, box.y2 - box.y1);
+}
+float iou(const Box& a, const Box& b, float area_a, float area_b) {
+    const float x1 = (std::max)(a.x1, b.x1), y1 = (std::max)(a.y1, b.y1);
+    const float x2 = (std::min)(a.x2, b.x2), y2 = (std::min)(a.y2, b.y2);
+    const float inter = (std::max)(0.0F, x2 - x1) * (std::max)(0.0F, y2 - y1);
+    const float union_area = area_a + area_b - inter;
+    return inter > 0.0F && union_area > 0.0F ? inter / union_area : 0.0F;
 }
 float half_to_float(std::uint16_t value) {
     const std::uint32_t sign = (value & 0x8000U) << 16;
@@ -87,11 +107,18 @@ std::vector<Detection> decode(const core::Tensor& tensor, const Config& cfg, int
     const int attrs = tensor.shape[tensor.shape.size() - 2] <= tensor.shape.back() ? static_cast<int>(tensor.shape[tensor.shape.size() - 2]) : static_cast<int>(tensor.shape.back());
     const std::size_t scalar_count = tensor.data_type == core::TensorDataType::Float16
         ? tensor.data.size() / sizeof(std::uint16_t) : tensor.data.size() / sizeof(float);
+    if (tensor.data_type == core::TensorDataType::Float32 && tensor.data.size() % sizeof(float) != 0) return {};
     const int boxes = attrs > 0 ? static_cast<int>(scalar_count / static_cast<std::size_t>(attrs)) : 0;
     if (attrs < 5 || boxes <= 0) return {};
     const bool chw = tensor.shape.back() == boxes;
-    const auto values_storage = tensor_values(tensor);
-    const float* values = values_storage.data();
+    std::vector<float> values_storage;
+    const float* values = nullptr;
+    if (tensor.data_type == core::TensorDataType::Float16) {
+        values_storage = tensor_values(tensor);
+        values = values_storage.data();
+    } else {
+        values = reinterpret_cast<const float*>(tensor.data.data());
+    }
     const float scale = (std::min)(static_cast<float>(cfg.input_width) / image_width,
                                    static_cast<float>(cfg.input_height) / image_height);
     const int resized_w = (std::max)(1, static_cast<int>(std::round(image_width * scale)));
@@ -99,6 +126,7 @@ std::vector<Detection> decode(const core::Tensor& tensor, const Config& cfg, int
     const float pad_x = (cfg.input_width - resized_w) * 0.5F;
     const float pad_y = (cfg.input_height - resized_h) * 0.5F;
     std::vector<Detection> result;
+    result.reserve(static_cast<std::size_t>(boxes));
     // YOLO26 end2end exports top-k rows as [x1,y1,x2,y2,score,class].
     // YOLO11/raw exports use [cx,cy,w,h,class_scores...].
     const bool end2end = attrs == 6 && boxes <= 1000;
@@ -146,20 +174,38 @@ std::vector<Detection> decode(const core::Tensor& tensor, const Config& cfg, int
 std::vector<Detection> decode_detections(const core::Tensor& output, const Config& config, int image_width, int image_height) { return decode(output, config, image_width, image_height); }
 
 std::vector<Detection> nms(std::vector<Detection> candidates, float threshold, bool class_agnostic) {
+    if (candidates.size() < 2) return candidates;
     std::sort(candidates.begin(), candidates.end(), [](const Detection& a, const Detection& b) { return a.box.score > b.box.score; });
     std::vector<Detection> kept;
+    kept.reserve(candidates.size());
+    std::vector<float> kept_areas;
+    kept_areas.reserve(candidates.size());
     for (const auto& candidate : candidates) {
+        const float candidate_area = box_area(candidate.box);
         bool suppressed = false;
-        for (const auto& accepted : kept) if ((class_agnostic || candidate.box.class_id == accepted.box.class_id) && iou(candidate.box, accepted.box) > threshold) { suppressed = true; break; }
-        if (!suppressed) kept.push_back(candidate);
+        for (std::size_t i = 0; i < kept.size(); ++i) {
+            const auto& accepted = kept[i];
+            if ((class_agnostic || candidate.box.class_id == accepted.box.class_id) &&
+                iou(candidate.box, accepted.box, candidate_area, kept_areas[i]) > threshold) {
+                suppressed = true;
+                break;
+            }
+        }
+        if (!suppressed) {
+            kept.push_back(candidate);
+            kept_areas.push_back(candidate_area);
+        }
     }
     return kept;
 }
-std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& tensors,
-                                               const Config& cfg, int image_width, int image_height) {
+namespace {
+std::vector<Segmentation> decode_segmentations_impl(const std::vector<const core::Tensor*>& tensors,
+                                                    const Config& cfg, int image_width, int image_height) {
     const core::Tensor* det_tensor = nullptr;
     const core::Tensor* proto_tensor = nullptr;
-    for (const auto& tensor : tensors) {
+    for (const auto* tensor_ptr : tensors) {
+        if (!tensor_ptr) continue;
+        const auto& tensor = *tensor_ptr;
         if (tensor.data_type != core::TensorDataType::Float16 && tensor.data_type != core::TensorDataType::Float32) continue;
         if (tensor.shape.size() == 4 && !proto_tensor) proto_tensor = &tensor;
         else if (tensor.shape.size() >= 2 && !det_tensor) det_tensor = &tensor;
@@ -206,9 +252,11 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     const int resized_h = (std::max)(1, static_cast<int>(std::round(image_height * scale)));
     const float pad_x = (cfg.input_width - resized_w) * 0.5F;
     const float pad_y = (cfg.input_height - resized_h) * 0.5F;
-    struct Candidate { Detection detection; std::vector<float> coeffs; };
+    struct Candidate { Detection detection; std::size_t coeff_offset{}; };
     std::vector<Candidate> candidates;
     candidates.reserve(static_cast<std::size_t>((std::min)(boxes, 256)));
+    std::vector<float> coefficient_storage;
+    coefficient_storage.reserve(static_cast<std::size_t>((std::min)(boxes, 256)) * proto_channels);
     for (int i = 0; i < boxes; ++i) {
         auto at = [&](int a) { return chw ? det[static_cast<std::size_t>(a) * boxes + i] : det[static_cast<std::size_t>(i) * attrs + a]; };
         int class_id = 0;
@@ -238,21 +286,36 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
         item.detection.box = { (std::max)(0.0F, x1), (std::max)(0.0F, y1),
                                (std::min)(static_cast<float>(image_width), x2),
                                (std::min)(static_cast<float>(image_height), y2), score, class_id };
-        item.coeffs.resize(static_cast<std::size_t>(proto_channels));
-        for (int c = 0; c < proto_channels; ++c) item.coeffs[static_cast<std::size_t>(c)] = at(coefficient_start + c);
+        item.coeff_offset = coefficient_storage.size();
+        coefficient_storage.resize(item.coeff_offset + static_cast<std::size_t>(proto_channels));
+        for (int c = 0; c < proto_channels; ++c)
+            coefficient_storage[item.coeff_offset + static_cast<std::size_t>(c)] = at(coefficient_start + c);
         candidates.push_back(std::move(item));
     }
     std::vector<Candidate> kept;
     kept.reserve(candidates.size());
+    std::vector<float> kept_areas;
+    kept_areas.reserve(candidates.size());
     if (end2end) {
         // YOLO26's one-to-one head already performs top-k selection and does not require NMS.
         kept = std::move(candidates);
     } else {
         std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.detection.box.score > b.detection.box.score; });
         for (auto& candidate : candidates) {
+            const float candidate_area = box_area(candidate.detection.box);
             bool suppressed = false;
-            for (const auto& accepted : kept) if ((cfg.class_agnostic_nms || candidate.detection.box.class_id == accepted.detection.box.class_id) && iou(candidate.detection.box, accepted.detection.box) > cfg.nms_threshold) { suppressed = true; break; }
-            if (!suppressed) kept.push_back(std::move(candidate));
+            for (std::size_t i = 0; i < kept.size(); ++i) {
+                const auto& accepted = kept[i];
+                if ((cfg.class_agnostic_nms || candidate.detection.box.class_id == accepted.detection.box.class_id) &&
+                    iou(candidate.detection.box, accepted.detection.box, candidate_area, kept_areas[i]) > cfg.nms_threshold) {
+                    suppressed = true;
+                    break;
+                }
+            }
+            if (!suppressed) {
+                kept.push_back(std::move(candidate));
+                kept_areas.push_back(candidate_area);
+            }
         }
     }
     const float proto_stride_x = static_cast<float>(cfg.input_width) / proto_w;
@@ -285,6 +348,7 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     result.reserve(kept.size());
     for (const auto& candidate : kept) {
         const Box& box = candidate.detection.box;
+        const float* coeffs = coefficient_storage.data() + candidate.coeff_offset;
         const int left = (std::max)(0, static_cast<int>(std::floor(box.x1)));
         const int top = (std::max)(0, static_cast<int>(std::floor(box.y1)));
         const int right = (std::min)(image_width, static_cast<int>(std::ceil(box.x2)));
@@ -301,7 +365,7 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
             std::fill_n(mask_row, roi_w, 0.0F);
         }
         for (int c = 0; c < proto_channels; ++c) {
-            const float coefficient = candidate.coeffs[static_cast<std::size_t>(c)];
+            const float coefficient = coeffs[static_cast<std::size_t>(c)];
             const float* proto_channel = proto +
                 static_cast<std::size_t>(c) * proto_h * proto_w +
                 static_cast<std::size_t>(mask_pad_y + raw_y0) * proto_w + mask_pad_x + raw_x0;
@@ -335,6 +399,8 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     return result;
 }
 
+}
+
 std::vector<Pose> decode_poses(const core::Tensor& tensor, const Config& cfg, int image_width, int image_height) {
     if ((tensor.data_type != core::TensorDataType::Float16 && tensor.data_type != core::TensorDataType::Float32) ||
         tensor.shape.size() < 2 || image_width <= 0 || image_height <= 0) return {};
@@ -343,11 +409,18 @@ std::vector<Pose> decode_poses(const core::Tensor& tensor, const Config& cfg, in
     const int attrs = (std::min)(dim_a, dim_b);
     const std::size_t scalar_count = tensor.data_type == core::TensorDataType::Float16
         ? tensor.data.size() / sizeof(std::uint16_t) : tensor.data.size() / sizeof(float);
+    if (tensor.data_type == core::TensorDataType::Float32 && tensor.data.size() % sizeof(float) != 0) return {};
     const int boxes = attrs > 0 ? static_cast<int>(scalar_count / static_cast<std::size_t>(attrs)) : 0;
     if (attrs < 6 || boxes <= 0) return {};
     const bool chw = dim_b == boxes;
-    const auto storage = tensor_values(tensor);
-    const float* values = storage.data();
+    std::vector<float> storage;
+    const float* values = nullptr;
+    if (tensor.data_type == core::TensorDataType::Float16) {
+        storage = tensor_values(tensor);
+        values = storage.data();
+    } else {
+        values = reinterpret_cast<const float*>(tensor.data.data());
+    }
     const float scale = (std::min)(static_cast<float>(cfg.input_width) / image_width,
                                    static_cast<float>(cfg.input_height) / image_height);
     const int resized_w = (std::max)(1, static_cast<int>(std::round(image_width * scale)));
@@ -427,16 +500,23 @@ std::vector<Pose> decode_poses(const core::Tensor& tensor, const Config& cfg, in
         });
         std::vector<Candidate> kept;
         kept.reserve(candidates.size());
+        std::vector<float> kept_areas;
+        kept_areas.reserve(candidates.size());
         for (auto& candidate : candidates) {
+            const float candidate_area = box_area(candidate.pose.box);
             bool suppressed = false;
-            for (const auto& accepted : kept) {
+            for (std::size_t i = 0; i < kept.size(); ++i) {
+                const auto& accepted = kept[i];
                 if ((cfg.class_agnostic_nms || candidate.pose.box.class_id == accepted.pose.box.class_id) &&
-                    iou(candidate.pose.box, accepted.pose.box) > cfg.nms_threshold) {
+                    iou(candidate.pose.box, accepted.pose.box, candidate_area, kept_areas[i]) > cfg.nms_threshold) {
                     suppressed = true;
                     break;
                 }
             }
-            if (!suppressed) kept.push_back(std::move(candidate));
+            if (!suppressed) {
+                kept.push_back(std::move(candidate));
+                kept_areas.push_back(candidate_area);
+            }
         }
         candidates = std::move(kept);
     }
@@ -455,6 +535,10 @@ Detector::Detector(const std::string& path, Config config) : session_(core::TrtS
             config_.input_height = static_cast<int>(shape[2]);
             config_.input_width = static_cast<int>(shape[3]);
         }
+    }
+    if (config_.output_name.empty()) {
+        const auto outputs = session_.output_names();
+        if (!outputs.empty()) config_.output_name = outputs.front();
     }
 }
 std::vector<Detection> Detector::infer_image(const std::uint8_t* data, int width, int height, int channels) {
@@ -484,13 +568,25 @@ std::vector<Detection> Detector::infer_image(const std::uint8_t* data, int width
     }
     return result;
 }
+
+std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& tensors,
+                                               const Config& cfg, int image_width, int image_height) {
+    std::vector<const core::Tensor*> views;
+    views.reserve(tensors.size());
+    for (const auto& tensor : tensors) views.push_back(&tensor);
+    return decode_segmentations_impl(views, cfg, image_width, image_height);
+}
+
+std::vector<Segmentation> decode_segmentations(const std::vector<const core::Tensor*>& tensors,
+                                               const Config& cfg, int image_width, int image_height) {
+    return decode_segmentations_impl(tensors, cfg, image_width, image_height);
+}
 std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_width, int image_height) {
     const bool measure_timing = config_.enable_timing;
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
-    const auto inputs = session_.input_names();
-    const std::string input_name = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    const std::string& input_name = config_.input_name;
     if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
@@ -500,9 +596,7 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     std::vector<Detection> result;
-    const std::string output_name = !config_.output_name.empty()
-        ? config_.output_name
-        : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
+    const std::string& output_name = config_.output_name;
     if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
         const auto output_shape = session_.device_output_shape(output_name);
@@ -516,7 +610,7 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
             session_.device_output_shape(output_name), session_.device_output_type(output_name),
             config_, image_width, image_height, session_.cuda_stream());
     } else {
-        result = decode_detections(session_.get_output(output_name), config_, image_width, image_height);
+        result = decode_detections(session_.get_output_ref(output_name), config_, image_width, image_height);
     }
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
@@ -529,8 +623,7 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
-    const auto inputs = session_.input_names();
-    const std::string input_name = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    const std::string& input_name = config_.input_name;
     if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
@@ -539,9 +632,7 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     session_.infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    const std::string output_name = !config_.output_name.empty()
-        ? config_.output_name
-        : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
+    const std::string& output_name = config_.output_name;
     if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
     std::vector<Detection> result;
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
@@ -556,7 +647,7 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
             session_.device_output_shape(output_name), session_.device_output_type(output_name),
             config_, image_width, image_height, session_.cuda_stream());
     } else {
-        result = decode_detections(session_.get_output(output_name), config_, image_width, image_height);
+        result = decode_detections(session_.get_output_ref(output_name), config_, image_width, image_height);
     }
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
@@ -565,6 +656,7 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     return result;
 }
 Segmentor::Segmentor(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(config) {
+    output_names_ = session_.output_names();
     const auto names = session_.input_names();
     if (!names.empty()) {
         if (config_.input_name.empty()) config_.input_name = names.front();
@@ -608,8 +700,7 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
-    const auto inputs = session_.input_names();
-    const std::string input_name = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    const std::string& input_name = config_.input_name;
     if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
@@ -623,7 +714,7 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
         if (!cuda_postprocess_) cuda_postprocess_ = cuda_backend::create_segmentation_postprocess_context();
         std::string det_name = config_.output_name;
         std::string proto_name = config_.prototype_name;
-        for (const auto& name : session_.output_names()) {
+        for (const auto& name : output_names_) {
             const auto shape = session_.device_output_shape(name);
             if (shape.size() == 4 && proto_name.empty()) proto_name = name;
             else if (shape.size() >= 2 && det_name.empty()) det_name = name;
@@ -643,12 +734,10 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
             session_.device_output_type(proto_name), config_, image_width, image_height,
             session_.cuda_stream(), *cuda_postprocess_);
     } else {
-        auto tensors = session_.outputs();
-        if (!config_.output_name.empty() || !config_.prototype_name.empty()) {
-            tensors.clear();
-            if (!config_.output_name.empty()) tensors.push_back(session_.get_output(config_.output_name));
-            if (!config_.prototype_name.empty()) tensors.push_back(session_.get_output(config_.prototype_name));
-        }
+        std::vector<const core::Tensor*> tensors;
+        if (!config_.output_name.empty()) tensors.push_back(&session_.get_output_ref(config_.output_name));
+        if (!config_.prototype_name.empty()) tensors.push_back(&session_.get_output_ref(config_.prototype_name));
+        if (tensors.empty()) tensors = session_.output_refs();
         result = decode_segmentations(tensors, config_, image_width, image_height);
     }
     if (measure_timing) {
@@ -662,8 +751,7 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
-    const auto inputs = session_.input_names();
-    const std::string input_name = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    const std::string& input_name = config_.input_name;
     if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
@@ -676,7 +764,7 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
         std::string det_name = config_.output_name;
         std::string proto_name = config_.prototype_name;
-        for (const auto& name : session_.output_names()) {
+        for (const auto& name : output_names_) {
             const auto shape = session_.device_output_shape(name);
             if (shape.size() == 4 && proto_name.empty()) proto_name = name;
             else if (shape.size() >= 2 && det_name.empty()) det_name = name;
@@ -697,12 +785,10 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
             session_.device_output_type(proto_name), config_, image_width, image_height,
             session_.cuda_stream(), *cuda_postprocess_);
     } else {
-        auto tensors = session_.outputs();
-        if (!config_.output_name.empty() || !config_.prototype_name.empty()) {
-            tensors.clear();
-            if (!config_.output_name.empty()) tensors.push_back(session_.get_output(config_.output_name));
-            if (!config_.prototype_name.empty()) tensors.push_back(session_.get_output(config_.prototype_name));
-        }
+        std::vector<const core::Tensor*> tensors;
+        if (!config_.output_name.empty()) tensors.push_back(&session_.get_output_ref(config_.output_name));
+        if (!config_.prototype_name.empty()) tensors.push_back(&session_.get_output_ref(config_.prototype_name));
+        if (tensors.empty()) tensors = session_.output_refs();
         result = decode_segmentations(tensors, config_, image_width, image_height);
     }
     if (measure_timing) {
@@ -721,6 +807,10 @@ PoseEstimator::PoseEstimator(const std::string& path, Config config) : session_(
             config_.input_height = static_cast<int>(shape[2]);
             config_.input_width = static_cast<int>(shape[3]);
         }
+    }
+    if (config_.output_name.empty()) {
+        const auto outputs = session_.output_names();
+        if (!outputs.empty()) config_.output_name = outputs.front();
     }
 }
 std::vector<Pose> PoseEstimator::infer_image(const std::uint8_t* data, int width, int height, int channels) {
@@ -756,8 +846,7 @@ std::vector<Pose> PoseEstimator::infer(const std::vector<float>& chw, int image_
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
-    const auto inputs = session_.input_names();
-    const std::string input_name = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    const std::string& input_name = config_.input_name;
     if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(true);
@@ -766,11 +855,9 @@ std::vector<Pose> PoseEstimator::infer(const std::vector<float>& chw, int image_
     session_.infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    const std::string output_name = !config_.output_name.empty()
-        ? config_.output_name
-        : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
+    const std::string& output_name = config_.output_name;
     if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
-    auto result = decode_poses(session_.get_output(output_name), config_, image_width, image_height);
+    auto result = decode_poses(session_.get_output_ref(output_name), config_, image_width, image_height);
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
         timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
@@ -783,8 +870,7 @@ std::vector<Pose> PoseEstimator::infer_device(const void* device_data, std::size
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
-    const auto inputs = session_.input_names();
-    const std::string input_name = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
+    const std::string& input_name = config_.input_name;
     if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
     session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
     session_.set_output_host_copy(true);
@@ -793,11 +879,9 @@ std::vector<Pose> PoseEstimator::infer_device(const void* device_data, std::size
     session_.infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    const std::string output_name = !config_.output_name.empty()
-        ? config_.output_name
-        : (session_.output_names().empty() ? std::string{} : session_.output_names().front());
+    const std::string& output_name = config_.output_name;
     if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
-    auto result = decode_poses(session_.get_output(output_name), config_, image_width, image_height);
+    auto result = decode_poses(session_.get_output_ref(output_name), config_, image_width, image_height);
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
         timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;

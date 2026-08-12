@@ -2,6 +2,7 @@
 
 #include <NvInfer.h>
 #include <cuda_runtime_api.h>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -189,7 +190,9 @@ void TrtSession::set_input(const std::string& name, const void* data, std::size_
     if (!impl_ || !data) throw std::invalid_argument("Input data is null");
     const int index = impl_->binding(name);
     if (!impl_->engine->bindingIsInput(index)) throw std::invalid_argument("Tensor is not an input: " + name);
-    impl_->inputs[name] = std::vector<std::uint8_t>(static_cast<const std::uint8_t*>(data), static_cast<const std::uint8_t*>(data) + bytes);
+    auto& input = impl_->inputs[name];
+    input.resize(bytes);
+    if (bytes > 0) std::memcpy(input.data(), data, bytes);
     impl_->device_inputs.erase(name);
     impl_->device_input_bytes.erase(name);
     (void)index;
@@ -272,6 +275,13 @@ Tensor TrtSession::get_output(const std::string& name) const {
     return it->second;
 }
 
+const Tensor& TrtSession::get_output_ref(const std::string& name) const {
+    if (!impl_) throw std::runtime_error("TensorRT session is not initialized");
+    const auto it = impl_->outputs.find(name);
+    if (it == impl_->outputs.end()) throw std::invalid_argument("Output tensor is unavailable: " + name);
+    return it->second;
+}
+
 const void* TrtSession::device_output(const std::string& name) const {
     if (!impl_) throw std::runtime_error("TensorRT session is not initialized");
     const int index = impl_->binding(name);
@@ -302,6 +312,14 @@ std::vector<Tensor> TrtSession::outputs() const {
     if (!impl_) throw std::runtime_error("TensorRT session is not initialized");
     std::vector<Tensor> result; result.reserve(impl_->outputs.size());
     for (const auto& item : impl_->outputs) result.push_back(item.second);
+    return result;
+}
+
+std::vector<const Tensor*> TrtSession::output_refs() const {
+    if (!impl_) throw std::runtime_error("TensorRT session is not initialized");
+    std::vector<const Tensor*> result;
+    result.reserve(impl_->outputs.size());
+    for (const auto& item : impl_->outputs) result.push_back(&item.second);
     return result;
 }
 } // namespace cvinfer::core

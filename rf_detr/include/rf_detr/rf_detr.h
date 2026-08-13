@@ -1,12 +1,18 @@
 #pragma once
 
 #include "core/trt_core.h"
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace cvinfer::rf_detr {
+namespace cuda_backend {
+struct PreprocessContext;
+struct DetectionPostprocessContext;
+struct SegmentationPostprocessContext;
+}
 
 enum class ComputeBackend {
     Auto = 0,
@@ -65,9 +71,13 @@ public:
     const Timing& last_timing() const noexcept { return timing_; }
 
 private:
+    std::vector<Detection> infer_device(const void* device_data, std::size_t bytes,
+                                        int image_width, int image_height);
     core::TrtSession session_;
     Config config_;
     Timing timing_;
+    std::shared_ptr<cuda_backend::PreprocessContext> cuda_preprocess_;
+    std::shared_ptr<cuda_backend::DetectionPostprocessContext> cuda_postprocess_;
 };
 
 class Segmentor {
@@ -79,9 +89,13 @@ public:
     const Timing& last_timing() const noexcept { return timing_; }
 
 private:
+    std::vector<Segmentation> infer_device(const void* device_data, std::size_t bytes,
+                                           int image_width, int image_height);
     core::TrtSession session_;
     Config config_;
     Timing timing_;
+    std::shared_ptr<cuda_backend::PreprocessContext> cuda_preprocess_;
+    std::shared_ptr<cuda_backend::SegmentationPostprocessContext> cuda_postprocess_;
 };
 
 } // namespace cvinfer::rf_detr

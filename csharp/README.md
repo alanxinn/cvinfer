@@ -56,7 +56,7 @@ rf-detr-seg
 `<output>_mask_<index>.pgm`。
 
 RF-DETR 分割 engine 输出为 `dets`、`labels`、`masks`。
-RF-DETR 前后处理目前仅支持 `auto`/`cpu`。
+
 计时默认关闭，添加 `--timing` 后才输出耗时统计。
 
 ## C# 调用

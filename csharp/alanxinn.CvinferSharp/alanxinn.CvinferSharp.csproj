@@ -39,6 +39,7 @@
     <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin\alanxinn_cvinfer.dll')">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin</NativeRuntimeSource>
     <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == ''">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-release\bin</NativeRuntimeSource>
     <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64</NativeRuntimeDestination>
+    <AlanxinnCudaBackendFile>$(NativeRuntimeSource)\alanxinn_cvinfer_cuda.dll</AlanxinnCudaBackendFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -66,8 +67,8 @@
     <ItemGroup>
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer.dll"
                                   Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer.dll')" />
-      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_cuda.dll"
-                                  Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_cuda.dll')" />
+      <AlanxinnNativeRuntimeFiles Include="$(AlanxinnCudaBackendFile)"
+                                  Condition="Exists('$(AlanxinnCudaBackendFile)')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvinfer.dll"
                                   Condition="Exists('$(NativeRuntimeSource)\nvinfer.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\cudart64_*.dll" />
@@ -98,6 +99,12 @@
     <Message Importance="High"
              Text="Native runtime DLLs selected: @(AlanxinnNativeRuntimeFiles)"
              Condition="'@(AlanxinnNativeRuntimeFiles)' != ''" />
+    <Message Importance="High"
+             Text="CUDA backend enabled: $(AlanxinnCudaBackendFile)"
+             Condition="Exists('$(AlanxinnCudaBackendFile)')" />
+    <Message Importance="High"
+             Text="CUDA backend skipped (DLL not found): $(AlanxinnCudaBackendFile)"
+             Condition="!Exists('$(AlanxinnCudaBackendFile)')" />
   </Target>
 
   <PropertyGroup>
@@ -113,7 +120,7 @@
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer.dll"
                                   Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll"
-                                  Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll')" />
+                                  Condition="Exists('$(AlanxinnCudaBackendFile)') and Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer.dll"
                                   Condition="Exists('$(NativeRuntimeDestination)\nvinfer.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
@@ -134,6 +141,12 @@
     <Message Importance="High"
              Text="NuGet native package path: runtimes\win-x64\native\%(AlanxinnNativePackageFiles.Filename)%(AlanxinnNativePackageFiles.Extension)"
              Condition="'@(AlanxinnNativePackageFiles)' != ''" />
+    <Message Importance="High"
+             Text="NuGet CUDA backend: included"
+             Condition="Exists('$(AlanxinnCudaBackendFile)') and Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll')" />
+    <Message Importance="High"
+             Text="NuGet CUDA backend: skipped"
+             Condition="!Exists('$(AlanxinnCudaBackendFile)') or !Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll')" />
   </Target>
 
   <Target Name="ValidateAlanxinnNativeRuntime"

@@ -34,6 +34,7 @@ try
     config = new CvinferConfig
     {
         ClassCount = ParseIntOption(parsed.Options, "classes", 0),
+        InferenceBackend = ParseInferenceBackend(GetOption(parsed.Options, "backend", "tensorrt")),
         PreprocessBackend = ParseBackend(GetOption(parsed.Options, "preprocess", "auto")),
         PostprocessBackend = ParseBackend(GetOption(parsed.Options, "postprocess", "auto")),
         EnableTiming = parsed.Options.ContainsKey("timing")
@@ -271,12 +272,13 @@ static ParsedArguments ParseArguments(string[] args)
             "result" => "output",
             "preprocess-backend" => "preprocess",
             "postprocess-backend" => "postprocess",
+            "inference-backend" => "backend",
             "task" => "type",
             var value => value
         };
         if (key is "input-width" or "input-height")
             throw new ArgumentException($"{token} is no longer supported; input size is read from the TensorRT engine");
-        if (key is not ("type" or "model" or "img" or "output" or "classes" or
+        if (key is not ("type" or "model" or "img" or "output" or "classes" or "backend" or
             "preprocess" or "postprocess" or "warmup" or "iterations" or "timing"))
             throw new ArgumentException($"unknown option: {token}");
         if (key == "timing")
@@ -312,6 +314,16 @@ static CvinferComputeBackend ParseBackend(string value)
         "cpu" => CvinferComputeBackend.Cpu,
         "cuda" or "gpu" => CvinferComputeBackend.Cuda,
         _ => throw new ArgumentException($"backend must be auto, cpu or cuda: {value}")
+    };
+}
+
+static CvinferInferenceBackend ParseInferenceBackend(string value)
+{
+    return value.Trim().ToLowerInvariant() switch
+    {
+        "tensorrt" or "trt" => CvinferInferenceBackend.TensorRt,
+        "denglin" => CvinferInferenceBackend.Denglin,
+        _ => throw new ArgumentException("backend must be tensorrt or denglin")
     };
 }
 

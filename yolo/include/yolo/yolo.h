@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/trt_core.h"
+#include "core/inference_session.h"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -20,7 +20,7 @@ struct Segmentation { Box box; std::vector<std::uint8_t> mask; int mask_width{};
 struct Keypoint { float x{}, y{}, score{}; };
 struct Pose { Box box; std::vector<Keypoint> keypoints; int keypoint_dims{3}; };
 struct Config {
-    // 由 TensorRT engine 的输入 shape 自动填充；非正值表示未显式指定。
+    // 由推理 session 的输入 shape 自动填充；非正值表示未显式指定。
     int input_width{};
     int input_height{};
     // <= 0: infer the category count from the exported output shape.
@@ -37,6 +37,8 @@ struct Config {
     ComputeBackend preprocess_backend{ComputeBackend::Auto};
     ComputeBackend postprocess_backend{ComputeBackend::Auto};
     bool enable_timing{false};
+    core::InferenceBackend inference_backend{
+        core::InferenceBackend::TensorRT};
 };
 struct Letterbox {
     float scale{1.0F};
@@ -64,28 +66,28 @@ std::vector<Pose> decode_poses(const core::Tensor& output, const Config& config,
 
 class Detector {
 public:
-    Detector(const std::string& engine_path, Config config = {});
+    Detector(const std::string& model_path, Config config = {});
     std::vector<Detection> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Detection> infer_image(const std::uint8_t* data, int width, int height, int channels);
     void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
     const Timing& last_timing() const noexcept { return timing_; }
 private:
     std::vector<Detection> infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height);
-    core::TrtSession session_;
+    std::unique_ptr<core::InferenceSession> session_;
     Config config_;
     Timing timing_;
     std::shared_ptr<cuda_backend::PreprocessContext> cuda_preprocess_;
 };
 class Segmentor {
 public:
-    Segmentor(const std::string& engine_path, Config config = {});
+    Segmentor(const std::string& model_path, Config config = {});
     std::vector<Segmentation> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Segmentation> infer_image(const std::uint8_t* data, int width, int height, int channels);
     void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
     const Timing& last_timing() const noexcept { return timing_; }
 private:
     std::vector<Segmentation> infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height);
-    core::TrtSession session_;
+    std::unique_ptr<core::InferenceSession> session_;
     Config config_;
     std::vector<std::string> output_names_;
     Timing timing_;
@@ -94,14 +96,14 @@ private:
 };
 class PoseEstimator {
 public:
-    PoseEstimator(const std::string& engine_path, Config config = {});
+    PoseEstimator(const std::string& model_path, Config config = {});
     std::vector<Pose> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Pose> infer_image(const std::uint8_t* data, int width, int height, int channels);
     void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
     const Timing& last_timing() const noexcept { return timing_; }
 private:
     std::vector<Pose> infer_device(const void* device_data, std::size_t bytes, int image_width, int image_height);
-    core::TrtSession session_;
+    std::unique_ptr<core::InferenceSession> session_;
     Config config_;
     Timing timing_;
     std::shared_ptr<cuda_backend::PreprocessContext> cuda_preprocess_;

@@ -19,6 +19,25 @@ void require_cuda_backend() {
 double elapsed_ms(std::chrono::steady_clock::time_point start, std::chrono::steady_clock::time_point end) {
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
+
+core::InferenceSessionOptions make_session_options(const Config& config,
+                                                   bool segmentation = false) {
+    core::InferenceSessionOptions options;
+    options.backend = config.inference_backend;
+    options.input_name = config.input_name;
+    if (config.input_width > 0 && config.input_height > 0) {
+        options.input_shape = {1, 3, config.input_height, config.input_width};
+    }
+    if (!segmentation && !config.output_name.empty()) {
+        options.output_names.push_back(config.output_name);
+    } else if (segmentation && !config.output_name.empty() &&
+               !config.prototype_name.empty() &&
+               config.prototype_name != config.output_name) {
+        options.output_names.push_back(config.output_name);
+        options.output_names.push_back(config.prototype_name);
+    }
+    return options;
+}
 }
 
 std::vector<float> preprocess_bgr(const std::uint8_t* data, int width, int height, int channels,
@@ -525,11 +544,13 @@ std::vector<Pose> decode_poses(const core::Tensor& tensor, const Config& cfg, in
     for (auto& candidate : candidates) result.push_back(std::move(candidate.pose));
     return result;
 }
-Detector::Detector(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(config) {
-    const auto names = session_.input_names();
+Detector::Detector(const std::string& path, Config config)
+    : session_(core::create_inference_session(path, make_session_options(config))),
+      config_(std::move(config)) {
+    const auto names = session_->input_names();
     if (!names.empty()) {
         if (config_.input_name.empty()) config_.input_name = names.front();
-        const auto shape = session_.tensor_shape(config_.input_name);
+        const auto shape = session_->tensor_shape(config_.input_name);
         if ((config_.input_width <= 0 || config_.input_height <= 0) &&
             shape.size() == 4 && shape[2] > 0 && shape[3] > 0) {
             config_.input_height = static_cast<int>(shape[2]);
@@ -537,7 +558,7 @@ Detector::Detector(const std::string& path, Config config) : session_(core::TrtS
         }
     }
     if (config_.output_name.empty()) {
-        const auto outputs = session_.output_names();
+        const auto outputs = session_->output_names();
         if (!outputs.empty()) config_.output_name = outputs.front();
     }
 }
@@ -550,7 +571,7 @@ std::vector<Detection> Detector::infer_image(const std::uint8_t* data, int width
         Letterbox transform;
         const auto preprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const float* device_data = cuda_backend::preprocess_bgr(*cuda_preprocess_, data, width, height, channels,
-                                                                config_, session_.cuda_stream(), &transform);
+                                                                config_, session_->cuda_stream(), &transform);
         const auto preprocess_ms = measure_timing ? elapsed_ms(preprocess_start, std::chrono::steady_clock::now()) : 0.0;
         auto result = infer_device(device_data, cuda_backend::preprocess_bytes(config_), width, height);
         if (measure_timing) {
@@ -587,30 +608,30 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
     const std::string& input_name = config_.input_name;
-    if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
-    session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
-    session_.set_input(input_name, chw.data(), chw.size() * sizeof(float));
+    if (input_name.empty()) throw std::runtime_error("Inference session has no input tensor");
+    session_->set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
+    session_->set_input(input_name, chw.data(), chw.size() * sizeof(float));
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     std::vector<Detection> result;
     const std::string& output_name = config_.output_name;
-    if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
+    if (output_name.empty()) throw std::runtime_error("Inference session has no output tensor");
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
-        const auto output_shape = session_.device_output_shape(output_name);
+        const auto output_shape = session_->device_output_shape(output_name);
         if (output_shape.size() >= 2) {
             const auto dim_a = output_shape[output_shape.size() - 2];
             const auto dim_b = output_shape.back();
             if ((std::min)(dim_a, dim_b) == 6 && (std::max)(dim_a, dim_b) <= 1000)
                 throw std::runtime_error("YOLO26 end2end CUDA postprocessing is not available; use --postprocess cpu or auto");
         }
-        result = cuda_backend::decode_detections_device(session_.device_output(output_name),
-            session_.device_output_shape(output_name), session_.device_output_type(output_name),
-            config_, image_width, image_height, session_.cuda_stream());
+        result = cuda_backend::decode_detections_device(session_->device_output(output_name),
+            session_->device_output_shape(output_name), session_->device_output_type(output_name),
+            config_, image_width, image_height, session_->cuda_stream());
     } else {
-        result = decode_detections(session_.get_output_ref(output_name), config_, image_width, image_height);
+        result = decode_detections(session_->get_output_ref(output_name), config_, image_width, image_height);
     }
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
@@ -624,30 +645,30 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
     const std::string& input_name = config_.input_name;
-    if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
-    session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
-    session_.set_input_device(input_name, device_data, bytes);
+    if (input_name.empty()) throw std::runtime_error("Inference session has no input tensor");
+    session_->set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
+    session_->set_input_device(input_name, device_data, bytes);
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const std::string& output_name = config_.output_name;
-    if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
+    if (output_name.empty()) throw std::runtime_error("Inference session has no output tensor");
     std::vector<Detection> result;
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
-        const auto output_shape = session_.device_output_shape(output_name);
+        const auto output_shape = session_->device_output_shape(output_name);
         if (output_shape.size() >= 2) {
             const auto dim_a = output_shape[output_shape.size() - 2];
             const auto dim_b = output_shape.back();
             if ((std::min)(dim_a, dim_b) == 6 && (std::max)(dim_a, dim_b) <= 1000)
                 throw std::runtime_error("YOLO26 end2end CUDA postprocessing is not available; use --postprocess cpu or auto");
         }
-        result = cuda_backend::decode_detections_device(session_.device_output(output_name),
-            session_.device_output_shape(output_name), session_.device_output_type(output_name),
-            config_, image_width, image_height, session_.cuda_stream());
+        result = cuda_backend::decode_detections_device(session_->device_output(output_name),
+            session_->device_output_shape(output_name), session_->device_output_type(output_name),
+            config_, image_width, image_height, session_->cuda_stream());
     } else {
-        result = decode_detections(session_.get_output_ref(output_name), config_, image_width, image_height);
+        result = decode_detections(session_->get_output_ref(output_name), config_, image_width, image_height);
     }
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
@@ -655,12 +676,14 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     }
     return result;
 }
-Segmentor::Segmentor(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(config) {
-    output_names_ = session_.output_names();
-    const auto names = session_.input_names();
+Segmentor::Segmentor(const std::string& path, Config config)
+    : session_(core::create_inference_session(path, make_session_options(config, true))),
+      config_(std::move(config)) {
+    output_names_ = session_->output_names();
+    const auto names = session_->input_names();
     if (!names.empty()) {
         if (config_.input_name.empty()) config_.input_name = names.front();
-        const auto shape = session_.tensor_shape(config_.input_name);
+        const auto shape = session_->tensor_shape(config_.input_name);
         if ((config_.input_width <= 0 || config_.input_height <= 0) &&
             shape.size() == 4 && shape[2] > 0 && shape[3] > 0) {
             config_.input_height = static_cast<int>(shape[2]);
@@ -677,7 +700,7 @@ std::vector<Segmentation> Segmentor::infer_image(const std::uint8_t* data, int w
         Letterbox transform;
         const auto preprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const float* device_data = cuda_backend::preprocess_bgr(*cuda_preprocess_, data, width, height, channels,
-                                                                config_, session_.cuda_stream(), &transform);
+                                                                config_, session_->cuda_stream(), &transform);
         const auto preprocess_ms = measure_timing ? elapsed_ms(preprocess_start, std::chrono::steady_clock::now()) : 0.0;
         auto result = infer_device(device_data, cuda_backend::preprocess_bytes(config_), width, height);
         if (measure_timing) {
@@ -701,12 +724,12 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
     const std::string& input_name = config_.input_name;
-    if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
-    session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
-    session_.set_input(input_name, chw.data(), chw.size() * sizeof(float));
+    if (input_name.empty()) throw std::runtime_error("Inference session has no input tensor");
+    session_->set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
+    session_->set_input(input_name, chw.data(), chw.size() * sizeof(float));
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     std::vector<Segmentation> result;
@@ -715,29 +738,29 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
         std::string det_name = config_.output_name;
         std::string proto_name = config_.prototype_name;
         for (const auto& name : output_names_) {
-            const auto shape = session_.device_output_shape(name);
+            const auto shape = session_->device_output_shape(name);
             if (shape.size() == 4 && proto_name.empty()) proto_name = name;
             else if (shape.size() >= 2 && det_name.empty()) det_name = name;
         }
-        if (det_name.empty() || proto_name.empty()) throw std::runtime_error("TensorRT segmentation outputs are incomplete");
-        const auto det_shape = session_.device_output_shape(det_name);
-        const auto proto_shape = session_.device_output_shape(proto_name);
+        if (det_name.empty() || proto_name.empty()) throw std::runtime_error("Inference session segmentation outputs are incomplete");
+        const auto det_shape = session_->device_output_shape(det_name);
+        const auto proto_shape = session_->device_output_shape(proto_name);
         if (det_shape.size() >= 2 && proto_shape.size() == 4) {
             const auto attrs = (std::min)(det_shape[det_shape.size() - 2], det_shape.back());
             const auto boxes = (std::max)(det_shape[det_shape.size() - 2], det_shape.back());
             if (boxes <= 1000 && attrs == 6 + proto_shape[1])
                 throw std::runtime_error("YOLO26 end2end CUDA postprocessing is not available; use --postprocess cpu or auto");
         }
-        result = cuda_backend::decode_segmentations_device(session_.device_output(det_name),
-            session_.device_output_shape(det_name), session_.device_output_type(det_name),
-            session_.device_output(proto_name), session_.device_output_shape(proto_name),
-            session_.device_output_type(proto_name), config_, image_width, image_height,
-            session_.cuda_stream(), *cuda_postprocess_);
+        result = cuda_backend::decode_segmentations_device(session_->device_output(det_name),
+            session_->device_output_shape(det_name), session_->device_output_type(det_name),
+            session_->device_output(proto_name), session_->device_output_shape(proto_name),
+            session_->device_output_type(proto_name), config_, image_width, image_height,
+            session_->cuda_stream(), *cuda_postprocess_);
     } else {
         std::vector<const core::Tensor*> tensors;
-        if (!config_.output_name.empty()) tensors.push_back(&session_.get_output_ref(config_.output_name));
-        if (!config_.prototype_name.empty()) tensors.push_back(&session_.get_output_ref(config_.prototype_name));
-        if (tensors.empty()) tensors = session_.output_refs();
+        if (!config_.output_name.empty()) tensors.push_back(&session_->get_output_ref(config_.output_name));
+        if (!config_.prototype_name.empty()) tensors.push_back(&session_->get_output_ref(config_.prototype_name));
+        if (tensors.empty()) tensors = session_->output_refs();
         result = decode_segmentations(tensors, config_, image_width, image_height);
     }
     if (measure_timing) {
@@ -752,12 +775,12 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
     const std::string& input_name = config_.input_name;
-    if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
-    session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
-    session_.set_input_device(input_name, device_data, bytes);
+    if (input_name.empty()) throw std::runtime_error("Inference session has no input tensor");
+    session_->set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
+    session_->set_input_device(input_name, device_data, bytes);
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     std::vector<Segmentation> result;
@@ -765,13 +788,13 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
         std::string det_name = config_.output_name;
         std::string proto_name = config_.prototype_name;
         for (const auto& name : output_names_) {
-            const auto shape = session_.device_output_shape(name);
+            const auto shape = session_->device_output_shape(name);
             if (shape.size() == 4 && proto_name.empty()) proto_name = name;
             else if (shape.size() >= 2 && det_name.empty()) det_name = name;
         }
-        if (det_name.empty() || proto_name.empty()) throw std::runtime_error("TensorRT segmentation outputs are incomplete");
-        const auto det_shape = session_.device_output_shape(det_name);
-        const auto proto_shape = session_.device_output_shape(proto_name);
+        if (det_name.empty() || proto_name.empty()) throw std::runtime_error("Inference session segmentation outputs are incomplete");
+        const auto det_shape = session_->device_output_shape(det_name);
+        const auto proto_shape = session_->device_output_shape(proto_name);
         if (det_shape.size() >= 2 && proto_shape.size() == 4) {
             const auto attrs = (std::min)(det_shape[det_shape.size() - 2], det_shape.back());
             const auto boxes = (std::max)(det_shape[det_shape.size() - 2], det_shape.back());
@@ -779,16 +802,16 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
                 throw std::runtime_error("YOLO26 end2end CUDA postprocessing is not available; use --postprocess cpu or auto");
         }
         if (!cuda_postprocess_) cuda_postprocess_ = cuda_backend::create_segmentation_postprocess_context();
-        result = cuda_backend::decode_segmentations_device(session_.device_output(det_name),
-            session_.device_output_shape(det_name), session_.device_output_type(det_name),
-            session_.device_output(proto_name), session_.device_output_shape(proto_name),
-            session_.device_output_type(proto_name), config_, image_width, image_height,
-            session_.cuda_stream(), *cuda_postprocess_);
+        result = cuda_backend::decode_segmentations_device(session_->device_output(det_name),
+            session_->device_output_shape(det_name), session_->device_output_type(det_name),
+            session_->device_output(proto_name), session_->device_output_shape(proto_name),
+            session_->device_output_type(proto_name), config_, image_width, image_height,
+            session_->cuda_stream(), *cuda_postprocess_);
     } else {
         std::vector<const core::Tensor*> tensors;
-        if (!config_.output_name.empty()) tensors.push_back(&session_.get_output_ref(config_.output_name));
-        if (!config_.prototype_name.empty()) tensors.push_back(&session_.get_output_ref(config_.prototype_name));
-        if (tensors.empty()) tensors = session_.output_refs();
+        if (!config_.output_name.empty()) tensors.push_back(&session_->get_output_ref(config_.output_name));
+        if (!config_.prototype_name.empty()) tensors.push_back(&session_->get_output_ref(config_.prototype_name));
+        if (tensors.empty()) tensors = session_->output_refs();
         result = decode_segmentations(tensors, config_, image_width, image_height);
     }
     if (measure_timing) {
@@ -797,11 +820,13 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
     }
     return result;
 }
-PoseEstimator::PoseEstimator(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(config) {
-    const auto names = session_.input_names();
+PoseEstimator::PoseEstimator(const std::string& path, Config config)
+    : session_(core::create_inference_session(path, make_session_options(config))),
+      config_(std::move(config)) {
+    const auto names = session_->input_names();
     if (!names.empty()) {
         if (config_.input_name.empty()) config_.input_name = names.front();
-        const auto shape = session_.tensor_shape(config_.input_name);
+        const auto shape = session_->tensor_shape(config_.input_name);
         if ((config_.input_width <= 0 || config_.input_height <= 0) &&
             shape.size() == 4 && shape[2] > 0 && shape[3] > 0) {
             config_.input_height = static_cast<int>(shape[2]);
@@ -809,7 +834,7 @@ PoseEstimator::PoseEstimator(const std::string& path, Config config) : session_(
         }
     }
     if (config_.output_name.empty()) {
-        const auto outputs = session_.output_names();
+        const auto outputs = session_->output_names();
         if (!outputs.empty()) config_.output_name = outputs.front();
     }
 }
@@ -822,7 +847,7 @@ std::vector<Pose> PoseEstimator::infer_image(const std::uint8_t* data, int width
         Letterbox transform;
         const auto preprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const float* device_data = cuda_backend::preprocess_bgr(*cuda_preprocess_, data, width, height, channels,
-                                                                config_, session_.cuda_stream(), &transform);
+                                                                config_, session_->cuda_stream(), &transform);
         const auto preprocess_ms = measure_timing ? elapsed_ms(preprocess_start, std::chrono::steady_clock::now()) : 0.0;
         auto result = infer_device(device_data, cuda_backend::preprocess_bytes(config_), width, height);
         if (measure_timing) {
@@ -847,17 +872,17 @@ std::vector<Pose> PoseEstimator::infer(const std::vector<float>& chw, int image_
     if (config_.postprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
     const std::string& input_name = config_.input_name;
-    if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
-    session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(true);
-    session_.set_input(input_name, chw.data(), chw.size() * sizeof(float));
+    if (input_name.empty()) throw std::runtime_error("Inference session has no input tensor");
+    session_->set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(true);
+    session_->set_input(input_name, chw.data(), chw.size() * sizeof(float));
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const std::string& output_name = config_.output_name;
-    if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
-    auto result = decode_poses(session_.get_output_ref(output_name), config_, image_width, image_height);
+    if (output_name.empty()) throw std::runtime_error("Inference session has no output tensor");
+    auto result = decode_poses(session_->get_output_ref(output_name), config_, image_width, image_height);
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
         timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
@@ -871,17 +896,17 @@ std::vector<Pose> PoseEstimator::infer_device(const void* device_data, std::size
     if (config_.postprocess_backend == ComputeBackend::Cuda)
         throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
     const std::string& input_name = config_.input_name;
-    if (input_name.empty()) throw std::runtime_error("TensorRT engine has no input tensor");
-    session_.set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(true);
-    session_.set_input_device(input_name, device_data, bytes);
+    if (input_name.empty()) throw std::runtime_error("Inference session has no input tensor");
+    session_->set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(true);
+    session_->set_input_device(input_name, device_data, bytes);
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const std::string& output_name = config_.output_name;
-    if (output_name.empty()) throw std::runtime_error("TensorRT engine has no output tensor");
-    auto result = decode_poses(session_.get_output_ref(output_name), config_, image_width, image_height);
+    if (output_name.empty()) throw std::runtime_error("Inference session has no output tensor");
+    auto result = decode_poses(session_->get_output_ref(output_name), config_, image_width, image_height);
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
         timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;

@@ -101,17 +101,6 @@ struct TrtSession::Impl {
     }
 };
 
-const char* tensor_data_type_name(TensorDataType type) {
-    switch (type) {
-    case TensorDataType::Float32: return "FP32";
-    case TensorDataType::Float16: return "FP16";
-    case TensorDataType::Int8: return "INT8";
-    case TensorDataType::Int32: return "INT32";
-    case TensorDataType::Bool: return "BOOL";
-    default: return "UNKNOWN";
-    }
-}
-
 TrtSession::TrtSession() = default;
 TrtSession::~TrtSession() = default;
 TrtSession::TrtSession(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
@@ -211,6 +200,16 @@ void TrtSession::set_output_host_copy(bool enabled) {
     if (!impl_) throw std::runtime_error("TensorRT session is not initialized");
     impl_->output_host_copy = enabled;
 }
+
+void TrtSession::infer_async() {
+    // The TensorRT backend currently synchronizes inside infer(); retain that
+    // behavior while satisfying the backend-neutral Session interface.
+    infer();
+}
+
+void TrtSession::synchronize() {}
+
+bool TrtSession::is_pending() const noexcept { return false; }
 
 void TrtSession::infer() {
     if (!impl_) throw std::runtime_error("TensorRT session is not initialized");

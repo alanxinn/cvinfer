@@ -17,14 +17,17 @@ yolo/include/yolo/yolo_cuda.h
 yolo/src/yolo.cpp
 ```
 
-底层 TensorRT 推理由 `core::TrtSession` 完成。
+底层推理由 `core::create_inference_session()` 创建公共 Session，
+通过 `Config::inference_backend` 选择 TensorRT 或 Denglin。
 
 ## 配置
 
 `yolo::Config` 支持输入尺寸、类别数（默认按输出 shape 自动推断）、输出 tensor 名称、
-置信度/NMS/Mask 阈值、class-agnostic NMS 和 backend。
+置信度/NMS/Mask 阈值、class-agnostic NMS、预处理/后处理 backend，以及
+`InferenceBackend::TensorRT`/`InferenceBackend::Denglin` 推理后端。
 
-输入尺寸默认从 engine 读取；动态输入使用 profile 0 的 `OPT` shape。
+输入尺寸默认从 session 读取；Denglin ONNX 未显式提供时使用 `1x3x640x640`。
+动态输入使用 profile 0 的 `OPT` shape。
 未构建 CUDA backend 时，`auto`/`cpu` 可用，显式 `cuda` 会报错。
 Pose 后处理当前使用 CPU；可继续使用 CUDA 前处理。
 计时默认关闭，需要统计时将 `Config.enable_timing` 设为 `true`。

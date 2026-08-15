@@ -15,10 +15,10 @@ int main(int argc, char** argv) {
     }
     try {
         cvinfer::yolo::Config config;
-        auto probe = cvinfer::core::TrtSession::load(argv[1]);
-        const auto input_names = probe.input_names();
+        auto probe = cvinfer::core::create_inference_session(argv[1]);
+        const auto input_names = probe->input_names();
         if (!input_names.empty()) {
-            const auto shape = probe.tensor_shape(input_names.front());
+            const auto shape = probe->tensor_shape(input_names.front());
             if (shape.size() == 4 && shape[2] > 0 && shape[3] > 0) {
                 config.input_height = static_cast<int>(shape[2]);
                 config.input_width = static_cast<int>(shape[3]);

@@ -1,5 +1,6 @@
 #include "cvinfer/cvinfer_api.h"
 
+#include "core/inference_session.h"
 #include "yolo/yolo.h"
 #include "rf_detr/rf_detr.h"
 
@@ -11,6 +12,18 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#if defined(CVINFER_NATIVE_BACKEND_DENGLIN) && CVINFER_NATIVE_BACKEND_DENGLIN
+constexpr cvinfer::core::InferenceBackend kNativeBackend =
+    cvinfer::core::InferenceBackend::Denglin;
+constexpr int kNativeBackendValue = CVINFER_INFERENCE_BACKEND_DENGLIN;
+constexpr const char* kNativeBackendName = "Denglin";
+#else
+constexpr cvinfer::core::InferenceBackend kNativeBackend =
+    cvinfer::core::InferenceBackend::TensorRT;
+constexpr int kNativeBackendValue = CVINFER_INFERENCE_BACKEND_TENSORRT;
+constexpr const char* kNativeBackendName = "TensorRT";
+#endif
 
 struct cvinfer_model {
     cvinfer_model_type_t type{};
@@ -37,6 +50,7 @@ thread_local std::string g_last_error;
 
 void clear_error() { g_last_error.clear(); }
 void set_error(const char* message) { g_last_error = message ? message : "Unknown error"; }
+void set_error(std::string message) { g_last_error = std::move(message); }
 void set_error(const std::exception& error) { g_last_error = error.what(); }
 
 cvinfer_status_t invalid_argument(const char* message) {
@@ -46,6 +60,7 @@ cvinfer_status_t invalid_argument(const char* message) {
 
 cvinfer::yolo::Config make_config(const cvinfer_model_config_t* source) {
     cvinfer::yolo::Config config;
+    config.inference_backend = kNativeBackend;
     if (!source) return config;
     if (source->input_width > 0) config.input_width = source->input_width;
     if (source->input_height > 0) config.input_height = source->input_height;
@@ -78,8 +93,20 @@ cvinfer::rf_detr::ComputeBackend parse_rf_detr_backend(int32_t value) {
     }
 }
 
+cvinfer::core::InferenceBackend parse_inference_backend(int32_t value) {
+    switch (value) {
+    case CVINFER_INFERENCE_BACKEND_TENSORRT:
+        return cvinfer::core::InferenceBackend::TensorRT;
+    case CVINFER_INFERENCE_BACKEND_DENGLIN:
+        return cvinfer::core::InferenceBackend::Denglin;
+    default:
+        throw std::invalid_argument("Unsupported inference backend");
+    }
+}
+
 cvinfer::yolo::Config make_config_v2(const cvinfer_model_config_v2_t* source) {
     cvinfer::yolo::Config config;
+    config.inference_backend = kNativeBackend;
     if (!source) return config;
     if (source->input_width > 0) config.input_width = source->input_width;
     if (source->input_height > 0) config.input_height = source->input_height;
@@ -90,6 +117,7 @@ cvinfer::yolo::Config make_config_v2(const cvinfer_model_config_v2_t* source) {
     config.class_agnostic_nms = source->class_agnostic_nms != 0;
     config.preprocess_backend = parse_backend(source->preprocess_backend);
     config.postprocess_backend = parse_backend(source->postprocess_backend);
+    config.inference_backend = parse_inference_backend(source->inference_backend);
     if (source->keypoint_count > 0) config.keypoint_count = source->keypoint_count;
     if (source->keypoint_dims > 0) config.keypoint_dims = source->keypoint_dims;
     if (source->input_name) config.input_name = source->input_name;
@@ -100,6 +128,7 @@ cvinfer::yolo::Config make_config_v2(const cvinfer_model_config_v2_t* source) {
 
 cvinfer::rf_detr::Config make_rf_detr_config(const cvinfer_model_config_t* source) {
     cvinfer::rf_detr::Config config;
+    config.inference_backend = kNativeBackend;
     if (!source) return config;
     if (source->input_width > 0) config.input_width = source->input_width;
     if (source->input_height > 0) config.input_height = source->input_height;
@@ -118,12 +147,25 @@ cvinfer::rf_detr::Config make_rf_detr_config_v2(const cvinfer_model_config_v2_t*
     if (source) {
         config.preprocess_backend = parse_rf_detr_backend(source->preprocess_backend);
         config.postprocess_backend = parse_rf_detr_backend(source->postprocess_backend);
+        config.inference_backend = parse_inference_backend(source->inference_backend);
     }
     return config;
 }
 cvinfer_status_t handle_exception(const std::exception& error) {
     set_error(error);
     return CVINFER_STATUS_RUNTIME_ERROR;
+}
+
+cvinfer_status_t validate_inference_backend(int32_t value) {
+    if (value == kNativeBackendValue) return CVINFER_STATUS_OK;
+    if (value == CVINFER_INFERENCE_BACKEND_TENSORRT ||
+        value == CVINFER_INFERENCE_BACKEND_DENGLIN) {
+        set_error(std::string(kNativeBackendName) +
+                  " native library cannot load the requested inference backend");
+        return CVINFER_STATUS_UNSUPPORTED;
+    }
+    set_error("Unsupported inference backend");
+    return CVINFER_STATUS_INVALID_ARGUMENT;
 }
 } // namespace
 
@@ -163,6 +205,7 @@ CVINFER_API void CVINFER_CALL cvinfer_model_config_v2_init(cvinfer_model_config_
     config->postprocess_backend = CVINFER_BACKEND_AUTO;
     config->keypoint_count = 17;
     config->keypoint_dims = 3;
+    config->inference_backend = kNativeBackendValue;
 }
 CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create(
     const char* engine_path,
@@ -204,6 +247,10 @@ CVINFER_API cvinfer_status_t CVINFER_CALL cvinfer_model_create_v2(
     cvinfer_model_t** model) {
     clear_error();
     if (!engine_path || !*engine_path || !model) return invalid_argument("engine_path, model and output handle are required");
+    if (config) {
+        const auto backend_status = validate_inference_backend(config->inference_backend);
+        if (backend_status != CVINFER_STATUS_OK) return backend_status;
+    }
     *model = nullptr;
     try {
         auto instance = std::make_unique<cvinfer_model>();

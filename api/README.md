@@ -2,11 +2,23 @@
 
 `api` 将 `core`、YOLO11 和 RF-DETR 封装为稳定 C ABI，供 C# 或其他语言调用。
 
+模型配置的 `inference_backend` 用于选择推理引擎后端：
+`CVINFER_INFERENCE_BACKEND_TENSORRT`（默认）或
+`CVINFER_INFERENCE_BACKEND_DENGLIN`。启用 `BUILD_DENGLIN_BACKEND` 后，
+YOLO/RF-DETR 会通过公共 Session 工厂加载对应后端；未启用 Denglin 时选择
+该后端返回 `CVINFER_STATUS_UNSUPPORTED`。
+
+C# 侧对应 `CvinferInferenceBackend.TensorRt` 和
+`CvinferInferenceBackend.Denglin`，配置会原样传入
+`cvinfer_model_config_v2_t.inference_backend`。
+TensorRT 后端加载 TensorRT engine；Denglin 后端加载 ONNX 或 Denglin 自有
+engine/cache，二者文件格式不可混用。
+
 ## 主要接口
 
 ```cpp
 cvinfer_model_config_v2_init(&config);
-cvinfer_model_create_v2(engine, model_type, &config, &model);
+cvinfer_model_create_v2(model_path, model_type, &config, &model);
 cvinfer_model_infer_bgr(model, bgr, width, height, channels, &result);
 cvinfer_result_count(result);
 cvinfer_result_get_detection(result, index, &detection);
@@ -36,15 +48,24 @@ CVINFER_MODEL_RF_DETR_SEG
 ## 构建产物
 
 ```text
-alanxinn_cvinfer.dll
-alanxinn_cvinfer.lib
+alanxinn_cvinfer_trt.dll
+alanxinn_cvinfer_trt.lib
+alanxinn_cvinfer_denglin.dll       # BUILD_DENGLIN_BACKEND=ON 时生成
+alanxinn_cvinfer_denglin.lib
 ```
 
-C# 通过以下方式加载：
+C# 按 `CvinferInferenceBackend` 动态加载对应 native API；C/C++ 调用方应按
+模型后端显式链接匹配的 DLL。两个 C# NuGet 包可以同时引用，但每个模型句柄
+仍必须使用与其 `inference_backend` 对应的 native API。
 
 ```csharp
-[DllImport("alanxinn_cvinfer.dll", CallingConvention = CallingConvention.Cdecl)]
+// TensorRT: alanxinn_cvinfer_trt.dll
+// Denglin:  alanxinn_cvinfer_denglin.dll
 ```
+
+TensorRT runtime 输出到 `bintrt`，Denglin runtime 输出到 `bindl`。两套 native
+DLL 不再共享 CUDA/设备 runtime，避免 TensorRT 的 `cudart` 与 Denglin 的
+`curt` 在同一 native 模块中冲突。
 
 CUDA backend 为可选 DLL。未部署时 `auto`、`cpu` 可用，显式 `cuda` 会报错。
 

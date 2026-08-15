@@ -21,16 +21,12 @@ cmake --build --preset build-ninja-msvc-release
 
 ```text
 build/<preset>/tensorrt_builder/
-├─ alanxinn_tensorrt_builder.dll
-├─ nvinfer.dll
-├─ nvinfer_plugin.dll
-├─ nvonnxparser.dll
-├─ cudart64_110.dll
-├─ cublas64_11.dll
-├─ cublasLt64_11.dll
-├─ cudnn64_8.dll
-└─ zlibwapi.dll
+└─ alanxinn_tensorrt_builder.dll
 ```
+
+该目录只放 builder DLL。`nvinfer_plugin.dll`、`nvonnxparser.dll`、CUDA、
+cuBLAS、cuDNN 和 zlib 等运行库由 C# 包的 `TensorRtRuntime` 单独配置或按需
+下载，避免与 `bintrt`/推理包的运行时混放。
 
 ## C ABI
 

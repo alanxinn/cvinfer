@@ -7,14 +7,18 @@ namespace alanxinn;
 public sealed class CvinferModel : IDisposable
 {
     private IntPtr _handle;
+    private readonly NativeMethods.Api _native;
     public CvinferModelType ModelType { get; }
+    public CvinferInferenceBackend InferenceBackend { get; }
 
     public CvinferModel(string enginePath, CvinferModelType modelType, CvinferConfig? config = null)
     {
         if (string.IsNullOrWhiteSpace(enginePath)) throw new ArgumentException("Engine path is required", nameof(enginePath));
         ModelType = modelType;
+        InferenceBackend = config?.InferenceBackend ?? CvinferInferenceBackend.TensorRt;
+        _native = NativeMethods.Load(InferenceBackend);
         var nativeConfig = new NativeMethods.NativeConfigV2();
-        NativeMethods.cvinfer_model_config_v2_init(ref nativeConfig);
+        _native.ModelConfigV2Init(ref nativeConfig);
         var path = NativeMethods.StringToCoTaskMemUtf8(enginePath);
         var inputName = IntPtr.Zero;
         var outputName = IntPtr.Zero;
@@ -34,6 +38,7 @@ public sealed class CvinferModel : IDisposable
                 nativeConfig.PostprocessBackend = (int)config.PostprocessBackend;
                 nativeConfig.KeypointCount = config.KeypointCount;
                 nativeConfig.KeypointDimensions = config.KeypointDimensions;
+                nativeConfig.InferenceBackend = (int)config.InferenceBackend;
                 inputName = MarshalUtf8(config.InputName);
                 outputName = MarshalUtf8(config.OutputName);
                 prototypeName = MarshalUtf8(config.PrototypeName);
@@ -41,16 +46,17 @@ public sealed class CvinferModel : IDisposable
                 nativeConfig.OutputName = outputName;
                 nativeConfig.PrototypeName = prototypeName;
             }
-            NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_model_create_v2(path, (int)modelType, ref nativeConfig, out _handle));
+            _native.ThrowIfFailed(_native.ModelCreateV2(
+                path, (int)modelType, ref nativeConfig, out _handle));
             if (config?.EnableTiming == true)
             {
                 try
                 {
-                    NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_model_set_timing_enabled(_handle, 1));
+                    _native.ThrowIfFailed(_native.ModelSetTimingEnabled(_handle, 1));
                 }
                 catch
                 {
-                    NativeMethods.cvinfer_model_destroy(_handle);
+                    _native.ModelDestroy(_handle);
                     _handle = IntPtr.Zero;
                     throw;
                 }
@@ -87,16 +93,16 @@ public sealed class CvinferModel : IDisposable
         if (bgr == IntPtr.Zero) throw new ArgumentNullException(nameof(bgr));
         if (width <= 0 || height <= 0 || channels < 3) throw new ArgumentOutOfRangeException(nameof(width));
         ThrowIfDisposed();
-        NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_model_infer_bgr(
+        _native.ThrowIfFailed(_native.ModelInferBgr(
             _handle, bgr, width, height, channels, out var result));
-        return new CvinferResult(result, ModelType);
+        return new CvinferResult(result, ModelType, _native);
     }
 
     public void Dispose()
     {
         if (_handle != IntPtr.Zero)
         {
-            NativeMethods.cvinfer_model_destroy(_handle);
+            _native.ModelDestroy(_handle);
             _handle = IntPtr.Zero;
         }
         GC.SuppressFinalize(this);
@@ -110,34 +116,36 @@ public sealed class CvinferModel : IDisposable
 public sealed class CvinferResult : IDisposable
 {
     private IntPtr _handle;
+    private readonly NativeMethods.Api _native;
     public CvinferModelType ModelType { get; }
 
-    internal CvinferResult(IntPtr handle, CvinferModelType type)
+    internal CvinferResult(IntPtr handle, CvinferModelType type, NativeMethods.Api native)
     {
         _handle = handle;
         ModelType = type;
+        _native = native;
     }
 
-    public int Count => checked((int)NativeMethods.cvinfer_result_count(Handle).ToUInt64());
+    public int Count => checked((int)_native.ResultCount(Handle).ToUInt64());
 
     public CvinferTiming Timing
     {
         get
         {
-            NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_get_timing(Handle, out var value));
+            _native.ThrowIfFailed(_native.ResultGetTiming(Handle, out var value));
             return new CvinferTiming(value.PreprocessMs, value.InferenceMs, value.PostprocessMs, value.TotalMs);
         }
     }
 
     public CvinferDetection GetDetection(int index)
     {
-        NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_get_detection(Handle, new UIntPtr((uint)index), out var value));
+        _native.ThrowIfFailed(_native.ResultGetDetection(Handle, new UIntPtr((uint)index), out var value));
         return new CvinferDetection(ToBox(value.Box));
     }
 
     public CvinferSegmentation GetSegmentation(int index)
     {
-        NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_get_segmentation(Handle, new UIntPtr((uint)index), out var value));
+        _native.ThrowIfFailed(_native.ResultGetSegmentation(Handle, new UIntPtr((uint)index), out var value));
         return new CvinferSegmentation(ToBox(value.Box), value.MaskWidth, value.MaskHeight, checked((int)value.MaskBytes.ToUInt64()));
     }
 
@@ -149,7 +157,7 @@ public sealed class CvinferResult : IDisposable
         var pin = GCHandle.Alloc(mask, GCHandleType.Pinned);
         try
         {
-            NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_copy_mask(
+            _native.ThrowIfFailed(_native.ResultCopyMask(
                 Handle, new UIntPtr((uint)index), pin.AddrOfPinnedObject(), new UIntPtr((ulong)mask.Length), out var copied));
             if (copied.ToUInt64() != (ulong)mask.Length) Array.Resize(ref mask, checked((int)copied.ToUInt64()));
             return mask;
@@ -162,7 +170,7 @@ public sealed class CvinferResult : IDisposable
 
     public CvinferPose GetPose(int index)
     {
-        NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_get_pose(
+        _native.ThrowIfFailed(_native.ResultGetPose(
             Handle, new UIntPtr((uint)index), out var info));
         var keypoints = CopyKeypoints(index, info.KeypointBytes);
         return new CvinferPose(ToBox(info.Box), keypoints, info.KeypointDimensions);
@@ -170,7 +178,7 @@ public sealed class CvinferResult : IDisposable
 
     public CvinferKeypoint[] CopyKeypoints(int index)
     {
-        NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_get_pose(
+        _native.ThrowIfFailed(_native.ResultGetPose(
             Handle, new UIntPtr((uint)index), out var info));
         return CopyKeypoints(index, info.KeypointBytes);
     }
@@ -185,7 +193,7 @@ public sealed class CvinferResult : IDisposable
         var pin = GCHandle.Alloc(native, GCHandleType.Pinned);
         try
         {
-            NativeMethods.ThrowIfFailed(NativeMethods.cvinfer_result_copy_keypoints(
+            _native.ThrowIfFailed(_native.ResultCopyKeypoints(
                 Handle, new UIntPtr((uint)index), pin.AddrOfPinnedObject(), new UIntPtr((ulong)bytes), out var copied));
             var copiedBytes = checked((int)copied.ToUInt64());
             if (copiedBytes != bytes) Array.Resize(ref native, copiedBytes / nativeSize);
@@ -204,7 +212,7 @@ public sealed class CvinferResult : IDisposable
     {
         if (_handle != IntPtr.Zero)
         {
-            NativeMethods.cvinfer_result_destroy(_handle);
+            _native.ResultDestroy(_handle);
             _handle = IntPtr.Zero;
         }
         GC.SuppressFinalize(this);

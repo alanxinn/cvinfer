@@ -46,11 +46,17 @@ typedef enum cvinfer_compute_backend {
     CVINFER_BACKEND_CPU = 1,
     CVINFER_BACKEND_CUDA = 2
 } cvinfer_compute_backend_t;
+
+/* Inference engine backend used to load and execute the model. */
+typedef enum cvinfer_inference_backend {
+    CVINFER_INFERENCE_BACKEND_TENSORRT = 0,
+    CVINFER_INFERENCE_BACKEND_DENGLIN = 1
+} cvinfer_inference_backend_t;
 typedef struct cvinfer_model_config {
-    /* <= 0: read input dimensions from the TensorRT engine. */
+    /* <= 0: read input dimensions from the selected inference session. */
     int32_t input_width;
     int32_t input_height;
-    /* <= 0: infer category count from the engine output shape. */
+    /* <= 0: infer category count from the selected output shape. */
     int32_t class_count;
     float confidence_threshold;
     float nms_threshold;
@@ -61,10 +67,10 @@ typedef struct cvinfer_model_config {
     const char* prototype_name;
 } cvinfer_model_config_t;
 typedef struct cvinfer_model_config_v2 {
-    /* <= 0: read input dimensions from the TensorRT engine. */
+    /* <= 0: read input dimensions from the selected inference session. */
     int32_t input_width;
     int32_t input_height;
-    /* <= 0: infer category count from the engine output shape. */
+    /* <= 0: infer category count from the selected output shape. */
     int32_t class_count;
     float confidence_threshold;
     float nms_threshold;
@@ -78,6 +84,8 @@ typedef struct cvinfer_model_config_v2 {
     /* Pose output layout; defaults to COCO [17,3]. */
     int32_t keypoint_count;
     int32_t keypoint_dims;
+    /* Defaults to TensorRT; select Denglin when the native backend is built. */
+    int32_t inference_backend;
 } cvinfer_model_config_v2_t;
 
 typedef struct cvinfer_box {

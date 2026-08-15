@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    Default SDK source globs are evaluated before the SDK computes the final
+    output paths. Keep all build artifacts out of those globs even when the
+    two projects use custom subdirectories under bin/ and obj/.
+  -->
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <!--
+    The TensorRT and Denglin packages share this directory and have the same
+    AssemblyName. Keep their intermediate/output trees separate from the
+    beginning of MSBuild evaluation. Setting these values in a .csproj is too
+    late for Microsoft.Common.props/NuGet restore and causes duplicate
+    AssemblyInfo/TargetFramework attributes.
+  -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'alanxinn.CvinferSharp'">
+    <BaseOutputPath>$(MSBuildThisFileDirectory)bin\TensorRT\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)obj\TensorRT\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(MSBuildThisFileDirectory)obj\TensorRT\</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'alanxinn.CvinferSharp.Denglin'">
+    <BaseOutputPath>$(MSBuildThisFileDirectory)bin\Denglin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)obj\Denglin\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(MSBuildThisFileDirectory)obj\Denglin\</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>

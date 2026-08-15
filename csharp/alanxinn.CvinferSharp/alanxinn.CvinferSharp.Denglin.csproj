@@ -1,0 +1,203 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net472;net6.0;net8.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>alanxinn</RootNamespace>
+    <AssemblyName>alanxinn.CvinferSharp</AssemblyName>
+    <PackageId>alanxinn.CvinferSharp.Denglin</PackageId>
+    <Version>0.1.4</Version>
+    <AssemblyVersion>0.1.4.0</AssemblyVersion>
+    <FileVersion>0.1.4.0</FileVersion>
+    <InformationalVersion>0.1.4</InformationalVersion>
+    <Authors>alanxinn</Authors>
+    <Company>alanxinn</Company>
+    <Product>alanxinn CvinferSharp Denglin</Product>
+    <Description>.NET C# wrapper for the Denglin native inference DLL.</Description>
+    <PackageTags>Denglin;YOLO11;RF-DETR;pose;segmentation;inference;CSharp</PackageTags>
+    <PackageReleaseNotes>Denglin inference backend package for alanxinn.CvinferSharp.</PackageReleaseNotes>
+    <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.Denglin.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PlatformTarget>x64</PlatformTarget>
+    <PackageOutputPath>$(MSBuildProjectDirectory)\bin\Denglin</PackageOutputPath>
+
+    <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin\alanxinn_cvinfer_denglin.dll')">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin</NativeRuntimeSource>
+    <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build-denglin\bin\$(Configuration)\alanxinn_cvinfer_denglin.dll')">$(MSBuildProjectDirectory)\..\..\build-denglin\bin\$(Configuration)</NativeRuntimeSource>
+    <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == ''">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-release\bin</NativeRuntimeSource>
+    <NativeDenglinRuntimeSource Condition="'$(NativeDenglinRuntimeSource)' == '' and Exists('$(NativeRuntimeSource)\..\bindl\dlnne.dll')">$(NativeRuntimeSource)\..\bindl</NativeDenglinRuntimeSource>
+    <DenglinSdkRoot Condition="'$(DenglinSdkRoot)' == '' and '$(DENGLIN_SDK_ROOT)' != ''">$(DENGLIN_SDK_ROOT)</DenglinSdkRoot>
+    <DenglinSdkRoot Condition="'$(DenglinSdkRoot)' == '' and Exists('E:\denglin-hamming\sdk\lib\dlnne.dll')">E:\denglin-hamming\sdk</DenglinSdkRoot>
+    <NativeDenglinRuntimeSource Condition="'$(NativeDenglinRuntimeSource)' == '' and '$(DenglinSdkRoot)' != ''">$(DenglinSdkRoot)\lib</NativeDenglinRuntimeSource>
+    <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64-denglin</NativeRuntimeDestination>
+    <NativeCvinferLibraryName>alanxinn_cvinfer_denglin.dll</NativeCvinferLibraryName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="README.Denglin.md" />
+    <None Remove="alanxinn.CvinferSharp.Denglin.targets" />
+    <None Remove="alanxinn.CvinferSharp.targets" />
+    <None Include="README.Denglin.md" Pack="true" PackagePath="README.Denglin.md" />
+    <None Include="alanxinn.CvinferSharp.Denglin.targets"
+          Pack="true"
+          PackagePath="buildTransitive\alanxinn.CvinferSharp.Denglin.targets"
+          Visible="false" />
+    <None Include="alanxinn.CvinferSharp.targets"
+          Pack="true"
+          PackagePath="buildTransitive\alanxinn.CvinferSharp.targets"
+          Visible="false" />
+    <None Include="..\..\LICENSE.txt" Pack="true" PackagePath="LICENSE.txt" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="ValidatePackageLicenseFile" BeforeTargets="Pack">
+    <Error Text="LICENSE.txt was not found. Expected path: $(MSBuildProjectDirectory)\..\..\LICENSE.txt"
+           Condition="!Exists('$(MSBuildProjectDirectory)\..\..\LICENSE.txt')" />
+  </Target>
+
+  <Target Name="CopyDenglinNativeRuntime"
+          BeforeTargets="Build;Pack"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <ItemGroup>
+      <DenglinNativeRuntimeFiles Include="$(NativeRuntimeSource)\$(NativeCvinferLibraryName)"
+                                 Condition="Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\dlnne.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\dlnne.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\dlnne_plugin.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\dlnne_plugin.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(DenglinSdkRoot)\lib\dlnne_plugin.dll"
+                                 Condition="!Exists('$(NativeDenglinRuntimeSource)\dlnne_plugin.dll') and
+                                            Exists('$(DenglinSdkRoot)\lib\dlnne_plugin.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\curt.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\curt.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\Executable_tc.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\Executable_tc.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\dleol.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\dleol.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\hcrt.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\hcrt.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\dlhal2.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\dlhal2.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\dlutil.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\dlutil.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\utils_common.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\utils_common.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\utils_log.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\utils_log.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\device_properties.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\device_properties.dll')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\dltu.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\dltu.dll')" />
+    </ItemGroup>
+
+    <!-- The same native staging directory was used by older mixed-backend
+         packages. Remove only known TensorRT/legacy files so a stale build can
+         never put cudart or the old unsuffixed API back into the Denglin
+         package. Keep the desired *_denglin.dll untouched. -->
+    <ItemGroup>
+      <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer.dll" />
+      <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_trt.dll" />
+      <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll" />
+      <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\nvinfer*.dll" />
+      <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
+      <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\zlibwapi.dll" />
+      <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
+    </ItemGroup>
+    <Delete Files="@(DenglinNativeStaleFiles)"
+            Condition="'@(DenglinNativeStaleFiles)' != ''" />
+
+    <MakeDir Directories="$(NativeRuntimeDestination)"
+             Condition="'@(DenglinNativeRuntimeFiles)' != ''" />
+    <Copy SourceFiles="@(DenglinNativeRuntimeFiles)"
+          DestinationFolder="$(NativeRuntimeDestination)"
+          SkipUnchangedFiles="true"
+          Condition="'@(DenglinNativeRuntimeFiles)' != ''" />
+    <Message Importance="High"
+             Text="Denglin native runtime DLLs selected: @(DenglinNativeRuntimeFiles->'%(Filename)%(Extension)')"
+             Condition="'@(DenglinNativeRuntimeFiles)' != ''" />
+  </Target>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>
+      $(TargetsForTfmSpecificContentInPackage);PackDenglinNativeRuntime
+    </TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="PackDenglinNativeRuntime"
+          DependsOnTargets="CopyDenglinNativeRuntime"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <ItemGroup>
+      <DenglinNativePackageFiles Include="$(NativeRuntimeDestination)\*.dll"
+                                 Condition="Exists('$(NativeRuntimeDestination)')" />
+      <DenglinHc2PackageFiles Include="$(NativeDenglinRuntimeSource)\hc2\*.dll"
+                              Condition="Exists('$(NativeDenglinRuntimeSource)\hc2')" />
+      <DenglinHc2PackageFiles Include="$(NativeDenglinRuntimeSource)\dlhc2.dll"
+                              Condition="Exists('$(NativeDenglinRuntimeSource)\dlhc2.dll')" />
+      <DenglinHc2PackageFiles Include="$(DenglinSdkRoot)\lib\dlhc2.dll"
+                              Condition="!Exists('$(NativeDenglinRuntimeSource)\hc2\dlhc2.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\dlhc2.dll') and
+                                         Exists('$(DenglinSdkRoot)\lib\dlhc2.dll')" />
+      <DenglinHc3PackageFiles Include="$(NativeDenglinRuntimeSource)\hc3\*.dll"
+                              Condition="Exists('$(NativeDenglinRuntimeSource)\hc3')" />
+      <DenglinHc3PackageFiles Include="$(NativeDenglinRuntimeSource)\hc2\dlhc2.dll"
+                              Condition="!Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc2.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc3.dll') and
+                                         Exists('$(NativeDenglinRuntimeSource)\hc2\dlhc2.dll')" />
+      <DenglinHc3PackageFiles Include="$(NativeDenglinRuntimeSource)\dlhc3.dll"
+                              Condition="Exists('$(NativeDenglinRuntimeSource)\dlhc3.dll')" />
+      <DenglinHc3PackageFiles Include="$(NativeDenglinRuntimeSource)\dlhc2.dll"
+                              Condition="!Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc2.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc3.dll') and
+                                         Exists('$(NativeDenglinRuntimeSource)\dlhc2.dll')" />
+      <DenglinHc3PackageFiles Include="$(DenglinSdkRoot)\lib\dlhc3.dll"
+                              Condition="!Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc2.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc3.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\dlhc3.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\dlhc2.dll') and
+                                         Exists('$(DenglinSdkRoot)\lib\dlhc3.dll')" />
+      <DenglinHc3PackageFiles Include="$(DenglinSdkRoot)\lib\dlhc2.dll"
+                              Condition="!Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc2.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc3.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\dlhc3.dll') and
+                                         !Exists('$(NativeDenglinRuntimeSource)\dlhc2.dll') and
+                                         !Exists('$(DenglinSdkRoot)\lib\dlhc3.dll') and
+                                         Exists('$(DenglinSdkRoot)\lib\dlhc2.dll')" />
+      <TfmSpecificPackageFile Include="@(DenglinNativePackageFiles)">
+        <PackagePath>runtimes\win-x64\native\%(Filename)%(Extension)</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="@(DenglinHc2PackageFiles)">
+        <PackagePath>runtimes\win-x64\hc2\%(Filename)%(Extension)</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="@(DenglinHc3PackageFiles)">
+        <PackagePath>runtimes\win-x64\hc3\%(Filename)%(Extension)</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+    <Message Importance="High"
+             Text="NuGet native package path: runtimes\win-x64\native\%(DenglinNativePackageFiles.Filename)%(DenglinNativePackageFiles.Extension)"
+             Condition="'@(DenglinNativePackageFiles)' != ''" />
+    <Message Importance="High"
+             Text="NuGet hc2 package path: runtimes\win-x64\hc2\%(DenglinHc2PackageFiles.Filename)%(DenglinHc2PackageFiles.Extension)"
+             Condition="'@(DenglinHc2PackageFiles)' != ''" />
+    <Message Importance="High"
+             Text="NuGet hc3 package path: runtimes\win-x64\hc3\%(DenglinHc3PackageFiles.Filename)%(DenglinHc3PackageFiles.Extension)"
+             Condition="'@(DenglinHc3PackageFiles)' != ''" />
+  </Target>
+
+  <Target Name="ValidateDenglinNativeRuntime"
+          BeforeTargets="Pack"
+          Condition="'$(TargetFramework)' == 'net8.0'">
+    <Error Text="Denglin $(NativeCvinferLibraryName) was not found in '$(NativeRuntimeSource)'. Build the C++ Denglin runtime first."
+           Condition="!Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
+    <Error Text="Denglin dlnne.dll was not found in '$(NativeDenglinRuntimeSource)'. Set NativeDenglinRuntimeSource or DenglinSdkRoot."
+           Condition="!Exists('$(NativeDenglinRuntimeSource)\dlnne.dll')" />
+    <Error Text="Denglin dlhc2.dll was not found. The SDK runtime must provide dlhc2.dll for hcrt.dll hc2/hc3 lookup."
+           Condition="!Exists('$(NativeDenglinRuntimeSource)\dlhc2.dll') and
+                      !Exists('$(NativeDenglinRuntimeSource)\hc2\dlhc2.dll') and
+                      !Exists('$(NativeDenglinRuntimeSource)\hc3\dlhc2.dll') and
+                      !Exists('$(DenglinSdkRoot)\lib\dlhc2.dll')" />
+  </Target>
+</Project>

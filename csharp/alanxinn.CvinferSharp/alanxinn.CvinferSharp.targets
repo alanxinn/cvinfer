@@ -1,0 +1,59 @@
+<Project>
+  <!--
+    NuGet puts native assets under runtimes/win-x64/native, but the .NET SDK
+    normally flattens them into OutDir. Keep this package's native deployment
+    isolated under the same relative runtime path instead.
+  -->
+  <PropertyGroup>
+    <AlanxinnNativeRuntimeRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</AlanxinnNativeRuntimeRid>
+    <AlanxinnNativeRuntimeRid Condition="'$(AlanxinnNativeRuntimeRid)' == ''">win-x64</AlanxinnNativeRuntimeRid>
+    <AlanxinnNativeRuntimeDirectory>$(OutDir)runtimes\$(AlanxinnNativeRuntimeRid)\native</AlanxinnNativeRuntimeDirectory>
+  </PropertyGroup>
+
+  <Target Name="AlanxinnIsolateNuGetNativeAssets"
+          DependsOnTargets="ResolveLockFileCopyLocalFiles"
+          AfterTargets="_HandlePackageFileConflicts"
+          BeforeTargets="_CopyFilesMarkedCopyLocal"
+          Condition="'$(OutDir)' != '' and '$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_AlanxinnPackageNativeAssets Include="@(NativeCopyLocalItems)"
+        Condition="'%(NativeCopyLocalItems.CopyLocal)' == 'true' and
+                   '%(NativeCopyLocalItems.AssetType)' == 'native' and
+                   ('%(NativeCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp' or
+                    '%(NativeCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp.Denglin')" />
+      <_AlanxinnPackageNativeAssets Include="@(RuntimeTargetsCopyLocalItems)"
+        Condition="'%(RuntimeTargetsCopyLocalItems.CopyLocal)' == 'true' and
+                   '%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native' and
+                   ('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp' or
+                    '%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp.Denglin')" />
+    </ItemGroup>
+
+    <RemoveDuplicates Inputs="@(_AlanxinnPackageNativeAssets)">
+      <Output TaskParameter="Filtered"
+              ItemName="_AlanxinnPackageNativeAssetsUnique" />
+    </RemoveDuplicates>
+
+    <ItemGroup>
+      <!-- Stop the SDK from flattening these package assets into OutDir. -->
+      <ReferenceCopyLocalPaths Remove="@(_AlanxinnPackageNativeAssetsUnique)" />
+      <_AlanxinnPackageNativeRootFiles
+        Include="@(_AlanxinnPackageNativeAssetsUnique->'$(OutDir)%(Filename)%(Extension)')" />
+      <_AlanxinnPackageNativeDestinationFiles
+        Include="@(_AlanxinnPackageNativeAssetsUnique->'$(AlanxinnNativeRuntimeDirectory)\%(Filename)%(Extension)')" />
+      <FileWrites Include="@(_AlanxinnPackageNativeDestinationFiles)" />
+    </ItemGroup>
+
+    <Delete Files="@(_AlanxinnPackageNativeRootFiles)"
+            Condition="'@(_AlanxinnPackageNativeRootFiles)' != ''" />
+    <MakeDir Directories="$(AlanxinnNativeRuntimeDirectory)"
+             Condition="'@(_AlanxinnPackageNativeAssetsUnique)' != ''" />
+    <Copy SourceFiles="@(_AlanxinnPackageNativeAssetsUnique)"
+          DestinationFiles="@(_AlanxinnPackageNativeDestinationFiles)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_AlanxinnPackageNativeAssetsUnique)' != ''" />
+
+    <Message Importance="High"
+             Text="Alanxinn native assets isolated to $(AlanxinnNativeRuntimeDirectory): @(_AlanxinnPackageNativeAssetsUnique->'%(Filename)%(Extension)')"
+             Condition="'@(_AlanxinnPackageNativeAssetsUnique)' != ''" />
+  </Target>
+</Project>

@@ -22,7 +22,20 @@ double elapsed_ms(std::chrono::steady_clock::time_point start, std::chrono::stea
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
 
+core::InferenceSessionOptions make_session_options(const Config& config) {
+    core::InferenceSessionOptions options;
+    options.backend = config.inference_backend;
+    options.input_name = config.input_name;
+    if (config.input_width > 0 && config.input_height > 0) {
+        options.input_shape = {1, 3, config.input_height, config.input_width};
+    }
+    return options;
+}
+
 bool cuda_backend_available() noexcept {
+#if !defined(CVINFER_HAS_CUDA_BACKEND) || !CVINFER_HAS_CUDA_BACKEND
+    return false;
+#else
 #if defined(_WIN32)
     constexpr const wchar_t* library_name = L"alanxinn_cvinfer_cuda.dll";
     if (GetModuleHandleW(library_name)) return true;
@@ -49,6 +62,11 @@ bool cuda_backend_available() noexcept {
                 sibling_path.resize(separator + 1);
                 sibling_path += library_name;
                 if (LoadLibraryW(sibling_path.c_str()) != nullptr) return true;
+
+                sibling_path.resize(separator + 1);
+                sibling_path += L"bintrt\\";
+                sibling_path += library_name;
+                if (LoadLibraryW(sibling_path.c_str()) != nullptr) return true;
             }
         }
     }
@@ -56,6 +74,7 @@ bool cuda_backend_available() noexcept {
     return LoadLibraryW(library_name) != nullptr;
 #else
     return dlopen("alanxinn_cvinfer_cuda.so", RTLD_LAZY | RTLD_LOCAL) != nullptr;
+#endif
 #endif
 }
 
@@ -429,11 +448,13 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     return result;
 }
 
-Detector::Detector(const std::string& path, Config config) : session_(core::TrtSession::load(path)), config_(std::move(config)) {
-    const auto inputs = session_.input_names();
+Detector::Detector(const std::string& path, Config config)
+    : session_(core::create_inference_session(path, make_session_options(config))),
+      config_(std::move(config)) {
+    const auto inputs = session_->input_names();
     if (!inputs.empty()) {
         if (config_.input_name.empty()) config_.input_name = inputs.front();
-        const auto shape = session_.tensor_shape(config_.input_name);
+        const auto shape = session_->tensor_shape(config_.input_name);
         if (shape.size() == 4) {
             if (config_.input_height <= 0) config_.input_height = static_cast<int>(shape[2]);
             if (config_.input_width <= 0) config_.input_width = static_cast<int>(shape[3]);
@@ -448,7 +469,7 @@ std::vector<Detection> Detector::infer_image(const std::uint8_t* data, int width
         require_cuda_backend();
         if (!cuda_preprocess_) cuda_preprocess_ = cuda_backend::create_preprocess_context();
         const float* device_input = cuda_backend::preprocess_bgr(
-            *cuda_preprocess_, data, width, height, channels, config_, session_.cuda_stream());
+            *cuda_preprocess_, data, width, height, channels, config_, session_->cuda_stream());
         const auto preprocess_ms = measure_timing ? elapsed_ms(start, std::chrono::steady_clock::now()) : 0.0;
         auto result = infer_device(device_input, cuda_backend::preprocess_bytes(config_), width, height);
         if (measure_timing) {
@@ -472,22 +493,22 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
-    const auto inputs = session_.input_names();
+    const auto inputs = session_->input_names();
     const std::string input = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
-    if (input.empty()) throw std::runtime_error("RF-DETR TensorRT engine has no input tensor");
-    session_.set_shape(input, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
-    session_.set_input(input, chw.data(), chw.size() * sizeof(float));
+    if (input.empty()) throw std::runtime_error("RF-DETR inference session has no input tensor");
+    session_->set_shape(input, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
+    session_->set_input(input, chw.data(), chw.size() * sizeof(float));
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto post_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
-        const auto names = session_.output_names();
+        const auto names = session_->output_names();
         std::string boxes_name;
         std::string logits_name;
         for (const auto& name : names) {
-            const auto shape = session_.device_output_shape(name);
+            const auto shape = session_->device_output_shape(name);
             const int last = shape.empty() ? 0 : static_cast<int>(shape.back());
             const int previous = shape.size() > 1 ? static_cast<int>(shape[shape.size() - 2]) : 0;
             const bool is_box_shape = last == 4 || previous == 4;
@@ -501,21 +522,21 @@ std::vector<Detection> Detector::infer(const std::vector<float>& chw, int image_
             throw std::runtime_error("RF-DETR outputs must contain boxes and logits tensors");
         if (!cuda_postprocess_) cuda_postprocess_ = cuda_backend::create_detection_postprocess_context();
         auto result = cuda_backend::decode_detections_device(
-            session_.device_output(boxes_name), session_.device_output_shape(boxes_name),
-            session_.device_output_type(boxes_name), session_.device_output(logits_name),
-            session_.device_output_shape(logits_name), session_.device_output_type(logits_name),
-            config_, image_width, image_height, session_.cuda_stream(), *cuda_postprocess_);
+            session_->device_output(boxes_name), session_->device_output_shape(boxes_name),
+            session_->device_output_type(boxes_name), session_->device_output(logits_name),
+            session_->device_output_shape(logits_name), session_->device_output_type(logits_name),
+            config_, image_width, image_height, session_->cuda_stream(), *cuda_postprocess_);
         if (measure_timing) {
             timing_.postprocess_ms = elapsed_ms(post_start, std::chrono::steady_clock::now());
             timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
         }
         return result;
     }
-    const auto names = session_.output_names();
+    const auto names = session_->output_names();
     const core::Tensor* boxes = nullptr; const core::Tensor* logits = nullptr;
     std::vector<core::Tensor> tensors;
     tensors.reserve(names.size());
-    for (const auto& name : names) tensors.push_back(session_.get_output(name));
+    for (const auto& name : names) tensors.push_back(session_->get_output(name));
     for (const auto& tensor : tensors) {
         const auto shape = tensor.shape;
         int last = shape.empty() ? 0 : static_cast<int>(shape.back());
@@ -542,21 +563,21 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
-    const auto inputs = session_.input_names();
+    const auto inputs = session_->input_names();
     const std::string input = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
-    if (input.empty()) throw std::runtime_error("RF-DETR TensorRT engine has no input tensor");
-    session_.set_shape(input, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
-    session_.set_input_device(input, device_data, bytes);
+    if (input.empty()) throw std::runtime_error("RF-DETR inference session has no input tensor");
+    session_->set_shape(input, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
+    session_->set_input_device(input, device_data, bytes);
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto post_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    const auto names = session_.output_names();
+    const auto names = session_->output_names();
     std::string boxes_name;
     std::string logits_name;
     for (const auto& name : names) {
-        const auto shape = session_.device_output_shape(name);
+        const auto shape = session_->device_output_shape(name);
         const int last = shape.empty() ? 0 : static_cast<int>(shape.back());
         const int previous = shape.size() > 1 ? static_cast<int>(shape[shape.size() - 2]) : 0;
         const bool is_box_shape = last == 4 || previous == 4;
@@ -572,13 +593,13 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
         if (!cuda_postprocess_) cuda_postprocess_ = cuda_backend::create_detection_postprocess_context();
         result = cuda_backend::decode_detections_device(
-            session_.device_output(boxes_name), session_.device_output_shape(boxes_name),
-            session_.device_output_type(boxes_name), session_.device_output(logits_name),
-            session_.device_output_shape(logits_name), session_.device_output_type(logits_name),
-            config_, image_width, image_height, session_.cuda_stream(), *cuda_postprocess_);
+            session_->device_output(boxes_name), session_->device_output_shape(boxes_name),
+            session_->device_output_type(boxes_name), session_->device_output(logits_name),
+            session_->device_output_shape(logits_name), session_->device_output_type(logits_name),
+            config_, image_width, image_height, session_->cuda_stream(), *cuda_postprocess_);
     } else {
         result = decode_detections(
-            session_.get_output_ref(boxes_name), session_.get_output_ref(logits_name),
+            session_->get_output_ref(boxes_name), session_->get_output_ref(logits_name),
             config_, image_width, image_height);
     }
     if (measure_timing) {
@@ -589,11 +610,12 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
 }
 
 Segmentor::Segmentor(const std::string& path, Config config)
-    : session_(core::TrtSession::load(path)), config_(std::move(config)) {
-    const auto inputs = session_.input_names();
+    : session_(core::create_inference_session(path, make_session_options(config))),
+      config_(std::move(config)) {
+    const auto inputs = session_->input_names();
     if (!inputs.empty()) {
         if (config_.input_name.empty()) config_.input_name = inputs.front();
-        const auto shape = session_.tensor_shape(config_.input_name);
+        const auto shape = session_->tensor_shape(config_.input_name);
         if (shape.size() == 4) {
             if (config_.input_height <= 0) config_.input_height = static_cast<int>(shape[2]);
             if (config_.input_width <= 0) config_.input_width = static_cast<int>(shape[3]);
@@ -608,7 +630,7 @@ std::vector<Segmentation> Segmentor::infer_image(const std::uint8_t* data, int w
         require_cuda_backend();
         if (!cuda_preprocess_) cuda_preprocess_ = cuda_backend::create_preprocess_context();
         const float* device_input = cuda_backend::preprocess_bgr(
-            *cuda_preprocess_, data, width, height, channels, config_, session_.cuda_stream());
+            *cuda_preprocess_, data, width, height, channels, config_, session_->cuda_stream());
         const auto preprocess_ms = measure_timing ? elapsed_ms(total_start, std::chrono::steady_clock::now()) : 0.0;
         auto result = infer_device(device_input, cuda_backend::preprocess_bytes(config_), width, height);
         if (measure_timing) {
@@ -632,23 +654,23 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
-    const auto inputs = session_.input_names();
+    const auto inputs = session_->input_names();
     const std::string input = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
-    if (input.empty()) throw std::runtime_error("RF-DETR segmentation engine has no input tensor");
-    session_.set_shape(input, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
-    session_.set_input(input, chw.data(), chw.size() * sizeof(float));
+    if (input.empty()) throw std::runtime_error("RF-DETR segmentation session has no input tensor");
+    session_->set_shape(input, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
+    session_->set_input(input, chw.data(), chw.size() * sizeof(float));
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
-        const auto names = session_.output_names();
+        const auto names = session_->output_names();
         std::string boxes_name;
         std::string labels_name;
         std::string masks_name;
         for (const auto& name : names) {
-            const auto shape = session_.device_output_shape(name);
+            const auto shape = session_->device_output_shape(name);
             if (name == "dets") boxes_name = name;
             else if (name == "labels") labels_name = name;
             else if (name == "masks") masks_name = name;
@@ -661,19 +683,19 @@ std::vector<Segmentation> Segmentor::infer(const std::vector<float>& chw, int im
             throw std::runtime_error("RF-DETR segmentation outputs are incomplete");
         if (!cuda_postprocess_) cuda_postprocess_ = cuda_backend::create_segmentation_postprocess_context();
         auto result = cuda_backend::decode_segmentations_device(
-            session_.device_output(boxes_name), session_.device_output_shape(boxes_name),
-            session_.device_output_type(boxes_name), session_.device_output(labels_name),
-            session_.device_output_shape(labels_name), session_.device_output_type(labels_name),
-            session_.device_output(masks_name), session_.device_output_shape(masks_name),
-            session_.device_output_type(masks_name), config_, image_width, image_height,
-            session_.cuda_stream(), *cuda_postprocess_);
+            session_->device_output(boxes_name), session_->device_output_shape(boxes_name),
+            session_->device_output_type(boxes_name), session_->device_output(labels_name),
+            session_->device_output_shape(labels_name), session_->device_output_type(labels_name),
+            session_->device_output(masks_name), session_->device_output_shape(masks_name),
+            session_->device_output_type(masks_name), config_, image_width, image_height,
+            session_->cuda_stream(), *cuda_postprocess_);
         if (measure_timing) {
             timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
             timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
         }
         return result;
     }
-    const auto outputs = session_.outputs();
+    const auto outputs = session_->outputs();
     auto result = decode_segmentations(outputs, config_, image_width, image_height);
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
@@ -688,22 +710,22 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda) require_cuda_backend();
-    const auto inputs = session_.input_names();
+    const auto inputs = session_->input_names();
     const std::string input = config_.input_name.empty() ? (inputs.empty() ? std::string{} : inputs.front()) : config_.input_name;
-    if (input.empty()) throw std::runtime_error("RF-DETR segmentation engine has no input tensor");
-    session_.set_shape(input, {1, 3, config_.input_height, config_.input_width});
-    session_.set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
-    session_.set_input_device(input, device_data, bytes);
+    if (input.empty()) throw std::runtime_error("RF-DETR segmentation session has no input tensor");
+    session_->set_shape(input, {1, 3, config_.input_height, config_.input_width});
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
+    session_->set_input_device(input, device_data, bytes);
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    session_.infer();
+    session_->infer();
     if (measure_timing) timing_.inference_ms = elapsed_ms(inference_start, std::chrono::steady_clock::now());
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    const auto names = session_.output_names();
+    const auto names = session_->output_names();
     std::string boxes_name;
     std::string labels_name;
     std::string masks_name;
     for (const auto& name : names) {
-        const auto shape = session_.device_output_shape(name);
+        const auto shape = session_->device_output_shape(name);
         if (name == "dets") boxes_name = name;
         else if (name == "labels") labels_name = name;
         else if (name == "masks") masks_name = name;
@@ -718,14 +740,14 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
     if (config_.postprocess_backend == ComputeBackend::Cuda) {
         if (!cuda_postprocess_) cuda_postprocess_ = cuda_backend::create_segmentation_postprocess_context();
         result = cuda_backend::decode_segmentations_device(
-            session_.device_output(boxes_name), session_.device_output_shape(boxes_name),
-            session_.device_output_type(boxes_name), session_.device_output(labels_name),
-            session_.device_output_shape(labels_name), session_.device_output_type(labels_name),
-            session_.device_output(masks_name), session_.device_output_shape(masks_name),
-            session_.device_output_type(masks_name), config_, image_width, image_height,
-            session_.cuda_stream(), *cuda_postprocess_);
+            session_->device_output(boxes_name), session_->device_output_shape(boxes_name),
+            session_->device_output_type(boxes_name), session_->device_output(labels_name),
+            session_->device_output_shape(labels_name), session_->device_output_type(labels_name),
+            session_->device_output(masks_name), session_->device_output_shape(masks_name),
+            session_->device_output_type(masks_name), config_, image_width, image_height,
+            session_->cuda_stream(), *cuda_postprocess_);
     } else {
-        result = decode_segmentations(session_.outputs(), config_, image_width, image_height);
+        result = decode_segmentations(session_->outputs(), config_, image_width, image_height);
     }
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());

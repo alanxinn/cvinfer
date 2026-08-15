@@ -1,0 +1,31 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)alanxinn.CvinferSharp.targets"
+          Condition="Exists('$(MSBuildThisFileDirectory)alanxinn.CvinferSharp.targets')" />
+
+  <PropertyGroup>
+    <AlanxinnDenglinRuntimeRoot>$(OutDir)runtimes\win-x64</AlanxinnDenglinRuntimeRoot>
+    <AlanxinnDenglinHc2SourceRoot>$(MSBuildThisFileDirectory)..\runtimes\win-x64\hc2</AlanxinnDenglinHc2SourceRoot>
+    <AlanxinnDenglinHc3SourceRoot>$(MSBuildThisFileDirectory)..\runtimes\win-x64\hc3</AlanxinnDenglinHc3SourceRoot>
+  </PropertyGroup>
+
+  <Target Name="AlanxinnDenglinCopyHcRuntime"
+          BeforeTargets="Build;Publish"
+          Condition="'$(OutDir)' != ''">
+    <ItemGroup>
+      <AlanxinnDenglinHc2Files Include="$(AlanxinnDenglinHc2SourceRoot)\*.dll"
+                               Condition="Exists('$(AlanxinnDenglinHc2SourceRoot)')" />
+      <AlanxinnDenglinHc3Files Include="$(AlanxinnDenglinHc3SourceRoot)\*.dll"
+                               Condition="Exists('$(AlanxinnDenglinHc3SourceRoot)')" />
+    </ItemGroup>
+    <MakeDir Directories="$(AlanxinnDenglinRuntimeRoot)\hc2;$(AlanxinnDenglinRuntimeRoot)\hc3"
+             Condition="'@(AlanxinnDenglinHc2Files);@(AlanxinnDenglinHc3Files)' != ''" />
+    <Copy SourceFiles="@(AlanxinnDenglinHc2Files)"
+          DestinationFolder="$(AlanxinnDenglinRuntimeRoot)\hc2"
+          SkipUnchangedFiles="true"
+          Condition="'@(AlanxinnDenglinHc2Files)' != ''" />
+    <Copy SourceFiles="@(AlanxinnDenglinHc3Files)"
+          DestinationFolder="$(AlanxinnDenglinRuntimeRoot)\hc3"
+          SkipUnchangedFiles="true"
+          Condition="'@(AlanxinnDenglinHc3Files)' != ''" />
+  </Target>
+</Project>

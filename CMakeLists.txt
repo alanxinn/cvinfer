@@ -11,6 +11,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(BUILD_CUDA_BACKEND
   "Build the optional CUDA preprocessing/postprocessing backend"
   OFF)
+option(BUILD_DENGLIN_BACKEND
+  "Build the optional Denglin inference backend"
+  OFF)
 set(ALANXINN_CUDA_BACKEND_DIR
   "${CMAKE_CURRENT_SOURCE_DIR}/private/cuda_backend"
   CACHE PATH "Private CUDA backend source directory")
@@ -31,6 +34,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+# Keep backend-specific public native APIs in bin and stage their runtime DLLs
+# separately.  TensorRT and Denglin intentionally use different CUDA runtime
+# implementations, so they must never be linked into the same native DLL.
+set(CVINFER_TRT_RUNTIME_DIRECTORY "${CMAKE_BINARY_DIR}/bintrt")
+set(CVINFER_DENGLIN_RUNTIME_DIRECTORY "${CMAKE_BINARY_DIR}/bindl")
+
 if(WIN32)
   set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 endif()
@@ -50,6 +59,7 @@ endif()
 
 set(CUDA_ROOT "${CMAKE_CUDA_TOOLKIT_ROOT_DIR}" CACHE PATH "CUDA root directory")
 set(TENSORRT_ROOT "" CACHE PATH "TensorRT root directory")
+set(DENGLIN_SDK_ROOT "" CACHE PATH "Denglin Hamming SDK root")
 set(OPENCV_ROOT "" CACHE PATH "OpenCV root directory or install prefix")
 
 if(NOT CUDA_ROOT)
@@ -108,27 +118,155 @@ cvinfer_find_existing_dir(CVINFER_OPENCV_BIN_DIR
   "${OpenCV_DIR}/bin"
   "${OPENCV_ROOT}/bin")
 
-file(GLOB CVINFER_RUNTIME_DLLS CONFIGURE_DEPENDS
-  "${CVINFER_OPENCV_BIN_DIR}/opencv_world*.dll"
+file(GLOB CVINFER_OPENCV_RELEASE_DLLS CONFIGURE_DEPENDS
+  "${CVINFER_OPENCV_BIN_DIR}/opencv_world*.dll")
+list(FILTER CVINFER_OPENCV_RELEASE_DLLS EXCLUDE REGEX "d\\.dll$")
+
+# Keep only the runtime set required by the public TensorRT inference DLL in
+# bintrt.  The ONNX builder has a separate deployment directory below, so its
+# parser/plugin/cuBLAS/cuDNN dependencies must not leak into the inference
+# runtime or the CvinferSharp package.
+file(GLOB CVINFER_TRT_RUNTIME_DLLS CONFIGURE_DEPENDS
+  ${CVINFER_OPENCV_RELEASE_DLLS}
   "${TENSORRT_ROOT}/lib/nvinfer.dll"
+  "${TENSORRT_ROOT}/bin/nvinfer.dll"
+  "${TENSORRT_ROOT}/lib/zlibwapi.dll"
+  "${TENSORRT_ROOT}/bin/zlibwapi.dll"
   "${CUDA_ROOT}/bin/cudart64_*.dll"
   "${CUDA_ROOT}/bin/zlibwapi.dll")
-list(FILTER CVINFER_RUNTIME_DLLS EXCLUDE REGEX "d\\.dll$")
+list(FILTER CVINFER_TRT_RUNTIME_DLLS EXCLUDE REGEX "d\\.dll$")
+list(REMOVE_DUPLICATES CVINFER_TRT_RUNTIME_DLLS)
+
+# Remove files that may have been staged by older builds.  This keeps a
+# reconfigured build tree deterministic without deleting the whole output
+# directory (which may contain the optional CUDA backend DLL).
+file(GLOB CVINFER_TRT_STALE_RUNTIME_DLLS
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/nvinfer_plugin.dll"
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/nvonnxparser.dll"
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/cublas64_*.dll"
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/cublasLt64_*.dll"
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/cudnn*.dll"
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/nvrtc64_*.dll"
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/nvrtc-builtins64_*.dll"
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/cudart64_*d.dll"
+  "${CVINFER_TRT_RUNTIME_DIRECTORY}/opencv_world*d.dll")
+
+set(CVINFER_DENGLIN_RUNTIME_DLL_NAMES
+  dlnne.dll
+  dlnne_plugin.dll
+  curt.dll
+  Executable_tc.dll
+  dleol.dll
+  hcrt.dll
+  dlhal2.dll
+  dlutil.dll
+  utils_common.dll
+  utils_log.dll
+  device_properties.dll
+  dltu.dll)
+set(CVINFER_DENGLIN_RUNTIME_DLLS)
+set(CVINFER_DENGLIN_HC2_RUNTIME_DLL "")
+set(CVINFER_DENGLIN_HC3_RUNTIME_DLL "")
+if(BUILD_DENGLIN_BACKEND AND DENGLIN_SDK_ROOT)
+  foreach(_denglin_dll IN LISTS CVINFER_DENGLIN_RUNTIME_DLL_NAMES)
+    if(EXISTS "${DENGLIN_SDK_ROOT}/lib/${_denglin_dll}")
+      list(APPEND CVINFER_DENGLIN_RUNTIME_DLLS
+        "${DENGLIN_SDK_ROOT}/lib/${_denglin_dll}")
+    endif()
+  endforeach()
+  if(EXISTS "${DENGLIN_SDK_ROOT}/lib/dlhc2.dll")
+    set(CVINFER_DENGLIN_HC2_RUNTIME_DLL
+      "${DENGLIN_SDK_ROOT}/lib/dlhc2.dll")
+  endif()
+  if(EXISTS "${DENGLIN_SDK_ROOT}/lib/dlhc3.dll")
+    set(CVINFER_DENGLIN_HC3_RUNTIME_DLL
+      "${DENGLIN_SDK_ROOT}/lib/dlhc3.dll")
+  endif()
+  list(REMOVE_DUPLICATES CVINFER_DENGLIN_RUNTIME_DLLS)
+endif()
 
 file(GLOB CVINFER_DELAY_LOAD_DLLS CONFIGURE_DEPENDS
-  "${CVINFER_OPENCV_BIN_DIR}/opencv_world*.dll"
+  ${CVINFER_OPENCV_RELEASE_DLLS}
   "${TENSORRT_ROOT}/lib/nvinfer.dll"
   "${CUDA_ROOT}/bin/cudart64_*.dll")
 list(FILTER CVINFER_DELAY_LOAD_DLLS EXCLUDE REGEX "d\\.dll$")
 
 function(cvinfer_copy_runtime TARGET_NAME)
-  if(WIN32 AND CVINFER_RUNTIME_DLLS)
-    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              ${CVINFER_RUNTIME_DLLS}
-              $<TARGET_FILE_DIR:${TARGET_NAME}>
-      COMMAND_EXPAND_LISTS)
+  if(NOT WIN32)
+    return()
   endif()
+
+  set(_backend "BOTH")
+  if(ARGC GREATER 1)
+    string(TOUPPER "${ARGV1}" _backend)
+  endif()
+  if(NOT _backend STREQUAL "BOTH" AND
+     NOT _backend STREQUAL "TENSORRT" AND
+     NOT _backend STREQUAL "DENGLIN")
+    message(FATAL_ERROR
+      "cvinfer_copy_runtime(${TARGET_NAME}): backend must be BOTH, TENSORRT or DENGLIN")
+  endif()
+
+  set(_runtime_commands)
+  if(_backend STREQUAL "BOTH" OR _backend STREQUAL "TENSORRT")
+    if(CVINFER_TRT_STALE_RUNTIME_DLLS)
+      list(APPEND _runtime_commands
+        COMMAND ${CMAKE_COMMAND} -E rm -f
+                ${CVINFER_TRT_STALE_RUNTIME_DLLS})
+    endif()
+    list(APPEND _runtime_commands
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "${CVINFER_TRT_RUNTIME_DIRECTORY}")
+    if(CVINFER_TRT_RUNTIME_DLLS)
+      list(APPEND _runtime_commands
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              ${CVINFER_TRT_RUNTIME_DLLS}
+              "${CVINFER_TRT_RUNTIME_DIRECTORY}")
+    endif()
+  endif()
+  if(_backend STREQUAL "BOTH" OR _backend STREQUAL "DENGLIN")
+    list(APPEND _runtime_commands
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "${CVINFER_DENGLIN_RUNTIME_DIRECTORY}")
+    if(CVINFER_DENGLIN_RUNTIME_DLLS)
+      list(APPEND _runtime_commands
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              ${CVINFER_DENGLIN_RUNTIME_DLLS}
+              "${CVINFER_DENGLIN_RUNTIME_DIRECTORY}")
+    endif()
+  endif()
+  if((_backend STREQUAL "BOTH" OR _backend STREQUAL "DENGLIN") AND
+     CVINFER_DENGLIN_HC2_RUNTIME_DLL)
+    list(APPEND _runtime_commands
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CVINFER_DENGLIN_RUNTIME_DIRECTORY}/hc2"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${CVINFER_DENGLIN_HC2_RUNTIME_DLL}"
+              "${CVINFER_DENGLIN_RUNTIME_DIRECTORY}/hc2/dlhc2.dll")
+  endif()
+  if((_backend STREQUAL "BOTH" OR _backend STREQUAL "DENGLIN") AND
+     CVINFER_DENGLIN_HC3_RUNTIME_DLL)
+    list(APPEND _runtime_commands
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "${CVINFER_DENGLIN_RUNTIME_DIRECTORY}/hc3"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${CVINFER_DENGLIN_HC3_RUNTIME_DLL}"
+              "${CVINFER_DENGLIN_RUNTIME_DIRECTORY}/hc3/dlhc3.dll")
+  elseif((_backend STREQUAL "BOTH" OR _backend STREQUAL "DENGLIN") AND
+         CVINFER_DENGLIN_HC2_RUNTIME_DLL)
+    # SDK versions that only ship dlhc2.dll use the same runtime image for
+    # the hc3 lookup performed by hcrt.dll.
+    list(APPEND _runtime_commands
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "${CVINFER_DENGLIN_RUNTIME_DIRECTORY}/hc3"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${CVINFER_DENGLIN_HC2_RUNTIME_DLL}"
+              "${CVINFER_DENGLIN_RUNTIME_DIRECTORY}/hc3/dlhc2.dll")
+  endif()
+  add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+    ${_runtime_commands}
+    COMMAND_EXPAND_LISTS
+    VERBATIM)
 endfunction()
 
 function(cvinfer_enable_delay_load TARGET_NAME)

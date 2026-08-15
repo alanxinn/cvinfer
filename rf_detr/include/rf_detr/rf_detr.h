@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/trt_core.h"
+#include "core/inference_session.h"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -29,6 +29,7 @@ struct Segmentation {
     int mask_height{};
 };
 struct Config {
+    // 由推理 session 的输入 shape 自动填充；非正值表示未显式指定。
     int input_width{};
     int input_height{};
     // <= 0: infer the category count from the exported output shape.
@@ -45,6 +46,8 @@ struct Config {
     ComputeBackend preprocess_backend{ComputeBackend::Auto};
     ComputeBackend postprocess_backend{ComputeBackend::Auto};
     bool enable_timing{false};
+    core::InferenceBackend inference_backend{
+        core::InferenceBackend::TensorRT};
 };
 
 struct Timing {
@@ -64,7 +67,7 @@ std::vector<Detection> nms(std::vector<Detection> candidates, float threshold, b
 
 class Detector {
 public:
-    Detector(const std::string& engine_path, Config config = {});
+    Detector(const std::string& model_path, Config config = {});
     std::vector<Detection> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Detection> infer_image(const std::uint8_t* data, int width, int height, int channels);
     void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
@@ -73,7 +76,7 @@ public:
 private:
     std::vector<Detection> infer_device(const void* device_data, std::size_t bytes,
                                         int image_width, int image_height);
-    core::TrtSession session_;
+    std::unique_ptr<core::InferenceSession> session_;
     Config config_;
     Timing timing_;
     std::shared_ptr<cuda_backend::PreprocessContext> cuda_preprocess_;
@@ -82,7 +85,7 @@ private:
 
 class Segmentor {
 public:
-    Segmentor(const std::string& engine_path, Config config = {});
+    Segmentor(const std::string& model_path, Config config = {});
     std::vector<Segmentation> infer(const std::vector<float>& chw, int image_width, int image_height);
     std::vector<Segmentation> infer_image(const std::uint8_t* data, int width, int height, int channels);
     void set_timing_enabled(bool enabled) noexcept { config_.enable_timing = enabled; timing_ = {}; }
@@ -91,7 +94,7 @@ public:
 private:
     std::vector<Segmentation> infer_device(const void* device_data, std::size_t bytes,
                                            int image_width, int image_height);
-    core::TrtSession session_;
+    std::unique_ptr<core::InferenceSession> session_;
     Config config_;
     Timing timing_;
     std::shared_ptr<cuda_backend::PreprocessContext> cuda_preprocess_;

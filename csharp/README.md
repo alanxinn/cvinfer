@@ -13,7 +13,8 @@ alanxinn.TensorRtOnnxBuilderDemo/   转换 Demo
 
 - Windows x64
 - NVIDIA 驱动
-- 与 engine 匹配的 TensorRT/CUDA/OpenCV
+- TensorRT backend 使用与 engine 匹配的 TensorRT/CUDA/OpenCV；Denglin backend
+  使用匹配的 Denglin SDK/device runtime
 - 应用使用 x64 平台
 
 ## 推理 Demo
@@ -45,6 +46,7 @@ rf-detr-seg
 --img PATH
 --output PATH
 --classes N                 可选；默认按 engine 输出自动推断
+--backend tensorrt|denglin  推理引擎后端（Denglin 需启用 native backend）
 --preprocess auto|cpu|cuda
 --postprocess auto|cpu|cuda
 --warmup N
@@ -67,6 +69,7 @@ using alanxinn;
 var config = new CvinferConfig
 {
     ClassCount = 0,
+    InferenceBackend = CvinferInferenceBackend.TensorRt,
     PreprocessBackend = CvinferComputeBackend.Auto,
     PostprocessBackend = CvinferComputeBackend.Auto
 };
@@ -81,15 +84,50 @@ var segmentation = result.GetSegmentation(0);
 var mask = result.CopyMask(0);
 ```
 
+将 `InferenceBackend` 设置为 `CvinferInferenceBackend.Denglin` 后，native
+层会通过公共 Session 工厂加载 Denglin ONNX/engine。未启用 Denglin 或缺少
+运行时 DLL 时，模型创建会返回可读错误。
+
 ## 构建和打包
 
 ```powershell
 cmake --preset ninja-msvc-release
 cmake --build --preset build-ninja-msvc-release
-dotnet pack .\alanxinn.CvinferSharp\alanxinn.CvinferSharp.csproj -c Release
+.\csharp\alanxinn.CvinferSharp\pack-both.ps1 -Configuration Release
 ```
 
-native DLL 位于 NuGet 包的 `runtimes/win-x64/native/`。
+会生成两个包：
+
+- `alanxinn.CvinferSharp`：TensorRT/CUDA/OpenCV runtime；
+- `alanxinn.CvinferSharp.Denglin`：Denglin SDK runtime。
+
+包输出位置：
+
+```text
+alanxinn.CvinferSharp/bin/TensorRT/Release/
+alanxinn.CvinferSharp/bin/Denglin/
+```
+
+两个包的 native DLL 都位于 `runtimes/win-x64/native/`。应用只需引用
+对应的 NuGet 包，不需要手工复制 DLL。Denglin 包另外通过包内构建目标
+自动部署 `runtimes/win-x64/hc2`、`runtimes/win-x64/hc3`，供 SDK 的
+`hcrt.dll` 相对路径加载。
+
+TensorRT 包加载 `alanxinn_cvinfer_trt.dll`，Denglin 包加载
+`alanxinn_cvinfer_denglin.dll`。两个包可以同时引用，运行时通过
+`CvinferInferenceBackend` 选择后端；两套 native API DLL 不能互相替代，
+也不能改回旧的无后缀 `alanxinn_cvinfer.dll`。
+
+当前 Demo 已同时引用两个 0.1.4 包，直接通过 `--backend` 选择后端：
+
+```powershell
+dotnet run --project .\csharp\alanxinn.CvinferDemo `
+  -- --type yolo11-det --backend tensorrt --model yolo11n.engine --img bus.jpg
+
+dotnet run --project .\csharp\alanxinn.CvinferDemo `
+  -- --type yolo11-det --backend denglin --model yolo11n.denglin.cache.raw.engine --img bus.jpg
+```
+
 修改同版本包后，清理 NuGet 缓存再还原。
 
 ONNX 转换见：

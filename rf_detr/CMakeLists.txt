@@ -1,22 +1,49 @@
-set(CVINFER_RF_DETR_SOURCES src/rf_detr.cpp)
 if(TARGET alanxinn_cvinfer_cuda)
   set(CVINFER_RF_DETR_HAS_CUDA_BACKEND ON)
 else()
   set(CVINFER_RF_DETR_HAS_CUDA_BACKEND OFF)
-  list(APPEND CVINFER_RF_DETR_SOURCES src/rf_detr_cuda_stub.cpp)
 endif()
 
-add_library(alanxinn_cvinfer_rf_detr STATIC ${CVINFER_RF_DETR_SOURCES})
-target_include_directories(alanxinn_cvinfer_rf_detr PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(alanxinn_cvinfer_rf_detr PUBLIC alanxinn_cvinfer_core)
-if(CVINFER_RF_DETR_HAS_CUDA_BACKEND)
-  target_compile_definitions(alanxinn_cvinfer_rf_detr PUBLIC CVINFER_HAS_CUDA_BACKEND=1)
-  target_link_libraries(alanxinn_cvinfer_rf_detr PUBLIC alanxinn_cvinfer_cuda)
-else()
-  target_compile_definitions(alanxinn_cvinfer_rf_detr PRIVATE CVINFER_RF_DETR_CUDA_STATIC)
+function(cvinfer_add_rf_detr_target TARGET_NAME SESSION_TARGET ENABLE_CUDA)
+  set(_sources src/rf_detr.cpp)
+  if(NOT ENABLE_CUDA)
+    list(APPEND _sources src/rf_detr_cuda_stub.cpp)
+  endif()
+
+  add_library(${TARGET_NAME} STATIC ${_sources})
+  target_include_directories(${TARGET_NAME} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(${TARGET_NAME} PUBLIC ${SESSION_TARGET})
+
+  if(ENABLE_CUDA)
+    target_compile_definitions(${TARGET_NAME} PUBLIC
+      CVINFER_HAS_CUDA_BACKEND=1)
+    target_link_libraries(${TARGET_NAME} PUBLIC
+      alanxinn_cvinfer_cuda)
+    if(MSVC)
+      target_link_libraries(${TARGET_NAME} INTERFACE delayimp)
+      set_property(TARGET ${TARGET_NAME} APPEND PROPERTY
+        INTERFACE_LINK_OPTIONS "/DELAYLOAD:alanxinn_cvinfer_cuda.dll")
+    endif()
+  else()
+    # Keep Denglin completely independent from the NVIDIA CUDA backend.
+    target_compile_definitions(${TARGET_NAME} PRIVATE
+      CVINFER_RF_DETR_CUDA_STATIC
+      CVINFER_HAS_CUDA_BACKEND=0)
+  endif()
+endfunction()
+
+cvinfer_add_rf_detr_target(
+  alanxinn_cvinfer_rf_detr_tensorrt
+  alanxinn_cvinfer_core_session_tensorrt
+  ${CVINFER_RF_DETR_HAS_CUDA_BACKEND})
+
+if(BUILD_DENGLIN_BACKEND)
+  cvinfer_add_rf_detr_target(
+    alanxinn_cvinfer_rf_detr_denglin
+    alanxinn_cvinfer_core_session_denglin
+    OFF)
 endif()
-if(MSVC AND CVINFER_RF_DETR_HAS_CUDA_BACKEND)
-  target_link_libraries(alanxinn_cvinfer_rf_detr INTERFACE delayimp)
-  set_property(TARGET alanxinn_cvinfer_rf_detr APPEND PROPERTY
-    INTERFACE_LINK_OPTIONS "/DELAYLOAD:alanxinn_cvinfer_cuda.dll")
-endif()
+
+# Historical target name: the default model adapter is TensorRT.
+add_library(alanxinn_cvinfer_rf_detr ALIAS alanxinn_cvinfer_rf_detr_tensorrt)

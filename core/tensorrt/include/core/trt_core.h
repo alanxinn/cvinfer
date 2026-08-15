@@ -1,21 +1,13 @@
 #pragma once
 
+#include "core/tensor.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace cvinfer::core {
-
-enum class TensorDataType { Float32, Float16, Int8, Int32, Bool, Unknown };
-const char* tensor_data_type_name(TensorDataType type);
-
-struct Tensor {
-    std::string name;
-    std::vector<int64_t> shape;
-    TensorDataType data_type{TensorDataType::Unknown};
-    std::vector<std::uint8_t> data;
-};
 
 class TrtSession {
 public:
@@ -35,6 +27,11 @@ public:
     void set_input_device(const std::string& name, const void* device_data, std::size_t bytes);
     void set_output_host_copy(bool enabled);
     void infer();
+    // TensorRT keeps the historical synchronous implementation; these
+    // methods provide the same public Session contract as Denglin.
+    void infer_async();
+    void synchronize();
+    bool is_pending() const noexcept;
     Tensor get_output(const std::string& name) const;
     // Returns a view valid until the next infer() call on this session.
     const Tensor& get_output_ref(const std::string& name) const;

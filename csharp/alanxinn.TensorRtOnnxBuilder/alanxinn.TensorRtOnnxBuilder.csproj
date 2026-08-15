@@ -59,22 +59,6 @@
     <ItemGroup>
       <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll"
                                          Condition="Exists('$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll')" />
-      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvinfer.dll"
-                                         Condition="Exists('$(NativeRuntimeSource)\nvinfer.dll')" />
-      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvinfer_plugin.dll"
-                                         Condition="Exists('$(NativeRuntimeSource)\nvinfer_plugin.dll')" />
-      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\nvonnxparser.dll"
-                                         Condition="Exists('$(NativeRuntimeSource)\nvonnxparser.dll')" />
-      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\cudart64_110.dll"
-                                         Condition="Exists('$(NativeRuntimeSource)\cudart64_110.dll')" />
-      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\cublas64_11.dll"
-                                         Condition="Exists('$(NativeRuntimeSource)\cublas64_11.dll')" />
-      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\cublasLt64_11.dll"
-                                         Condition="Exists('$(NativeRuntimeSource)\cublasLt64_11.dll')" />
-      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\cudnn64_8.dll"
-                                         Condition="Exists('$(NativeRuntimeSource)\cudnn64_8.dll')" />
-      <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\zlibwapi.dll"
-                                         Condition="Exists('$(NativeRuntimeSource)\zlibwapi.dll')" />
 
       <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_tensorrt_builder.dll" />
       <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\nvinfer*.dll" />

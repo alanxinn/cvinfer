@@ -15,9 +15,17 @@ public enum CvinferComputeBackend
     Cpu = 1,
     Cuda = 2
 }
+
+public enum CvinferInferenceBackend
+{
+    TensorRt = 0,
+    TensorRT = TensorRt,
+    Denglin = 1
+}
+
 public sealed class CvinferConfig
 {
-    // 由 TensorRT engine 自动读取；设为正值时覆盖 engine shape。
+    // 由所选 inference backend 自动读取；设为正值时覆盖 session shape。
     public int InputWidth { get; set; }
     public int InputHeight { get; set; }
     // <= 0 lets the native decoder infer the category count from the engine output.
@@ -30,6 +38,7 @@ public sealed class CvinferConfig
     public int KeypointDimensions { get; set; } = 3;
     public CvinferComputeBackend PreprocessBackend { get; set; } = CvinferComputeBackend.Auto;
     public CvinferComputeBackend PostprocessBackend { get; set; } = CvinferComputeBackend.Auto;
+    public CvinferInferenceBackend InferenceBackend { get; set; } = CvinferInferenceBackend.TensorRt;
     public bool EnableTiming { get; set; }
     public string? InputName { get; set; }
     public string? OutputName { get; set; }

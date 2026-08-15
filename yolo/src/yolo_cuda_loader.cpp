@@ -17,7 +17,7 @@ bool cuda_backend_available() noexcept {
     constexpr const wchar_t* kLibraryName = L"alanxinn_cvinfer_cuda.dll";
     if (GetModuleHandleW(kLibraryName)) return true;
 
-    // When alanxinn_cvinfer.dll is loaded from a NuGet native asset directory,
+    // When alanxinn_cvinfer_trt.dll is loaded from a NuGet native asset directory,
     // the CUDA backend is usually beside it under:
     //   runtimes/win-x64/native/
     // LoadLibraryW("alanxinn_cvinfer_cuda.dll") only searches the process
@@ -39,6 +39,14 @@ bool cuda_backend_available() noexcept {
             const std::wstring::size_type separator = sibling_path.find_last_of(L"\\/");
             if (separator != std::wstring::npos) {
                 sibling_path.resize(separator + 1);
+                sibling_path += kLibraryName;
+                if (LoadLibraryW(sibling_path.c_str()) != nullptr) return true;
+
+                // CMake deployments keep the optional CUDA backend in the
+                // sibling bintrt directory. NuGet deployments keep it beside
+                // alanxinn_cvinfer_trt.dll, which was attempted above.
+                sibling_path.resize(separator + 1);
+                sibling_path += L"bintrt\\";
                 sibling_path += kLibraryName;
                 if (LoadLibraryW(sibling_path.c_str()) != nullptr) return true;
             }

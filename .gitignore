@@ -68,3 +68,9 @@ sam3_dinov3_onnx_tensorrt_analysis.md
 
 
 cache/
+
+dl-docs-win-v2-20260731/
+csharp/alanxinn.DenglinOnnxBuilder/bin/
+csharp/alanxinn.DenglinOnnxBuilder/obj/
+csharp/alanxinn.DenglinOnnxBuilderDemo/bin/
+csharp/alanxinn.DenglinOnnxBuilderDemo/obj/

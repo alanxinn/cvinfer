@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>alanxinn.DenglinOnnxBuilderDemo</RootNamespace>
+    <AssemblyName>alanxinn.DenglinOnnxBuilderDemo</AssemblyName>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <DenglinBuilderPackageVersion Condition="'$(DenglinBuilderPackageVersion)' == ''">0.1.4</DenglinBuilderPackageVersion>
+    <RestoreAdditionalProjectSources>$(MSBuildProjectDirectory)\..\alanxinn.DenglinOnnxBuilder\bin\Denglin</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="alanxinn.DenglinOnnxBuilder" Version="$(DenglinBuilderPackageVersion)" />
+  </ItemGroup>
+</Project>

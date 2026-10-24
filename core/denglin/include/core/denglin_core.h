@@ -60,15 +60,6 @@ struct DenglinOptimizationProfile {
     std::vector<int64_t> max_shape;
 };
 
-// Auto uses the modern tensor-address API when the loaded SDK engine exposes
-// it and falls back to binding pointers for older engines.  Bindings keeps the
-// legacy path available for compatibility; TensorApi requires EnqueueV3.
-enum class DenglinExecutionMode {
-    Auto,
-    Bindings,
-    TensorApi
-};
-
 struct DenglinSessionOptions {
     DenglinModelFormat model_format{DenglinModelFormat::Auto};
 
@@ -96,8 +87,6 @@ struct DenglinSessionOptions {
     // -1 keeps the SDK-selected profile (normally profile 0 for a new
     // context).  Set a non-negative value to select a profile explicitly.
     int optimization_profile{-1};
-
-    DenglinExecutionMode execution_mode{DenglinExecutionMode::Auto};
 
     int max_batch_size{1};
     int batch_size{1};

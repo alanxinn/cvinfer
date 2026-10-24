@@ -1,0 +1,21 @@
+<Project>
+  <!-- Optional offline SDK/Python bundle. The normal package does not contain
+       this large, vendor-licensed payload; when present, make it discoverable
+       under the application's runtimes directory. -->
+  <PropertyGroup>
+    <AlanxinnDenglinBundleSource>$(MSBuildThisFileDirectory)..\runtimes\win-x64\denglin</AlanxinnDenglinBundleSource>
+    <AlanxinnDenglinBundleDestination>$(OutDir)runtimes\win-x64\denglin</AlanxinnDenglinBundleDestination>
+  </PropertyGroup>
+  <Target Name="AlanxinnDenglinBuilderCopyRuntimeBundle"
+          BeforeTargets="Build;Publish"
+          Condition="'$(OutDir)' != '' and Exists('$(AlanxinnDenglinBundleSource)')">
+    <ItemGroup>
+      <AlanxinnDenglinBundleFiles Include="$(AlanxinnDenglinBundleSource)\**\*" />
+    </ItemGroup>
+    <MakeDir Directories="$(AlanxinnDenglinBundleDestination)" />
+    <Copy SourceFiles="@(AlanxinnDenglinBundleFiles)"
+          DestinationFiles="@(AlanxinnDenglinBundleFiles->'$(AlanxinnDenglinBundleDestination)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(AlanxinnDenglinBundleFiles)' != ''" />
+  </Target>
+</Project>

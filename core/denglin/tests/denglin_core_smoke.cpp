@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -83,12 +84,48 @@ void validate_host_outputs(const std::vector<cvinfer::core::Tensor>& outputs) {
     }
 }
 
+void print_output_summary(const std::vector<cvinfer::core::Tensor>& outputs) {
+    for (const auto& output : outputs) {
+        std::cout << "output=" << output.name << " shape=" << shape_string(output.shape)
+                  << " type=" << cvinfer::core::tensor_data_type_name(output.data_type)
+                  << " bytes=" << output.data.size();
+        if (output.data_type == cvinfer::core::TensorDataType::Float32 &&
+            output.data.size() >= sizeof(float)) {
+            const auto* values = reinterpret_cast<const float*>(output.data.data());
+            std::cout << " first=";
+            const auto count = (std::min<std::size_t>)(8, output.data.size() / sizeof(float));
+            for (std::size_t i = 0; i < count; ++i) {
+                if (i != 0) std::cout << ',';
+                std::cout << values[i];
+            }
+            if (output.shape.size() == 3 && output.shape[1] > 4) {
+                const auto boxes = static_cast<std::size_t>(output.shape[2]);
+                float class_min = values[4 * boxes];
+                float class_max = class_min;
+                for (std::size_t i = 4 * boxes; i < output.data.size() / sizeof(float); ++i) {
+                    class_min = (std::min)(class_min, values[i]);
+                    class_max = (std::max)(class_max, values[i]);
+                }
+                std::cout << " class0=" << values[4 * boxes]
+                          << " class1=" << values[5 * boxes]
+                          << " class2=" << values[6 * boxes]
+                          << " class3=" << values[7 * boxes]
+                          << " class_min=" << class_min << " class_max=" << class_max;
+                std::cout << " samples=" << values[4 * boxes + 100]
+                          << "," << values[4 * boxes + 1000]
+                          << "," << values[4 * boxes + 4000];
+            }
+        }
+        std::cout << '\n';
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "usage: alanxinn_cvinfer_denglin_smoke <model.onnx> "
-                     "[iterations] [input_name] [shape] [cache_path]\n";
+                     "[iterations] [input_name] [shape] [cache_path] [input_f32]\n";
         return 2;
     }
 
@@ -99,7 +136,9 @@ int main(int argc, char** argv) {
         const auto requested_shape = argc > 4
             ? parse_shape(argv[4])
             : std::vector<std::int64_t>{1, 3, 640, 640};
-        const std::string cache_path = argc > 5 ? argv[5] : std::string{};
+        const std::string cache_argument = argc > 5 ? argv[5] : std::string{};
+        const std::string cache_path = cache_argument == "-" ? std::string{} : cache_argument;
+        const std::string input_path = argc > 6 ? argv[6] : std::string{};
 
         cvinfer::core::DenglinSessionOptions options;
         options.input_name = input_name;
@@ -113,21 +152,31 @@ int main(int argc, char** argv) {
         const auto input_names = session.input_names();
         const auto output_names = session.output_names();
         if (input_names.empty() || output_names.empty()) {
-            throw std::runtime_error("Denglin model has no input or output binding");
+            throw std::runtime_error("Denglin model has no input or output IO tensor");
         }
 
         const auto actual_shape = session.tensor_shape(input_name);
         if (actual_shape.empty()) throw std::runtime_error("Denglin input shape is empty");
         const auto input_elements = volume(actual_shape);
         std::vector<float> input(input_elements);
-        for (std::size_t i = 0; i < input.size(); ++i) {
-            input[i] = static_cast<float>(static_cast<int>(i % 17) - 8) / 17.0F;
+        if (!input_path.empty()) {
+            std::ifstream file(input_path, std::ios::binary);
+            if (!file) throw std::runtime_error("unable to open input_f32: " + input_path);
+            file.read(reinterpret_cast<char*>(input.data()),
+                      static_cast<std::streamsize>(input.size() * sizeof(float)));
+            if (file.gcount() != static_cast<std::streamsize>(input.size() * sizeof(float)))
+                throw std::runtime_error("input_f32 has an unexpected size");
+        } else {
+            for (std::size_t i = 0; i < input.size(); ++i) {
+                input[i] = static_cast<float>(static_cast<int>(i % 17) - 8) / 17.0F;
+            }
         }
 
         session.set_input(input_name, input.data(), input.size() * sizeof(float));
         for (int i = 0; i < iterations; ++i) session.infer();
         const auto outputs = session.outputs();
         validate_host_outputs(outputs);
+        print_output_summary(outputs);
 
         // Stage-three coverage: re-apply the current shape, enqueue without
         // synchronizing, then explicitly wait before reading host outputs.

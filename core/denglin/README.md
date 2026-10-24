@@ -80,11 +80,15 @@ dynamic_session.synchronize();
 auto output_ptr = dynamic_session.device_output("output");
 ```
 
-`DenglinExecutionMode::Auto` 优先使用 SDK 的 `SetTensorAddress`/`EnqueueV3`，
-不支持该接口的旧 engine 自动回退到 binding + `EnqueueV2`（隐式 batch 使用
-`Enqueue`）。调用 `set_output_device()` 可提供调用方自己的 device output
+Core 统一使用 SDK 的 `SetTensorAddress`/`EnqueueV3` Tensor API，不提供旧
+执行接口回退。不支持 IO Tensor API 的旧 engine 会
+直接报告不兼容。调用 `set_output_device()` 可提供调用方自己的 device output
 buffer；未提供时 Core 会按当前 shape 自动分配显存。shape 改变后必须重新
 调用 `tensor_shape()` 或在执行后重新查询 `device_output_shape()`。
+
+纯 Tensor API 要求 engine 使用 Explicit Batch 构建。旧版本生成的隐式 Batch
+`.raw.engine` 不能继续复用，需从 ONNX 重新转换；cache envelope 已通过版本号
+自动失效并重新构建。
 
 ## 序列化和缓存
 

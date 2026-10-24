@@ -187,7 +187,12 @@ struct NneHostMemoryDeleter {
 using HostMemoryPtr = std::unique_ptr<dl::nne::HostMemory, NneHostMemoryDeleter>;
 
 constexpr char kDenglinCacheMagic[] = "CVINFER-DL-CACHE";
-constexpr std::uint32_t kDenglinCacheVersion = 2;
+// Version 5 invalidates caches produced before the parser signature was
+// registered explicitly. Version 4 invalidated the explicit-batch cache produced by the temporary
+// Tensor API builder.  Denglin's ONNX/MLIR parser is built and serialized by
+// the SDK's official Python path as an implicit-batch network; keeping the
+// cache version tied to that path prevents mixing incompatible engines.
+constexpr std::uint32_t kDenglinCacheVersion = 5;
 constexpr std::size_t kMaxCacheMetadataBytes = 16U * 1024U * 1024U;
 
 struct CacheMetadata {
@@ -656,22 +661,22 @@ CacheMetadata make_cache_metadata(const DenglinSessionOptions& options,
     metadata.plugin_module = options.plugin_module;
     metadata.plugin_first_op = options.plugin_first_op;
     if (engine) {
-        int input_index = options.input_name.empty() ? -1 : engine->GetBindingIndex(options.input_name.c_str());
-        if (input_index < 0) {
-            for (int index = 0; index < engine->GetNbBindings(); ++index) {
-                if (engine->BindingIsInput(index)) {
-                    input_index = index;
+        const char* input_name = options.input_name.empty() ? nullptr : options.input_name.c_str();
+        if (!input_name) {
+            for (int index = 0; index < engine->GetNbIOTensors(); ++index) {
+                const char* candidate = engine->GetIOTensorName(index);
+                if (candidate && engine->GetTensorIOMode(candidate) == dl::nne::kIOModeInput) {
+                    input_name = candidate;
                     break;
                 }
             }
         }
-        if (input_index >= 0) metadata.input_type = to_data_type(engine->GetBindingDataType(input_index));
+        if (input_name) metadata.input_type = to_data_type(engine->GetTensorDataType(input_name));
         if (metadata.output_names.empty()) {
-            for (int index = 0; index < engine->GetNbBindings(); ++index) {
-                if (!engine->BindingIsInput(index)) {
-                    const auto* name = engine->GetBindingName(index);
-                    if (name && *name) metadata.output_names.emplace_back(name);
-                }
+            for (int index = 0; index < engine->GetNbIOTensors(); ++index) {
+                const auto* name = engine->GetIOTensorName(index);
+                if (name && *name && engine->GetTensorIOMode(name) == dl::nne::kIOModeOutput)
+                    metadata.output_names.emplace_back(name);
             }
         }
     }
@@ -740,14 +745,13 @@ bool try_load_cache(const std::string& path,
             reason = "Denglin rejected the cached engine payload";
             return false;
         }
-        const auto input_index = candidate->GetBindingIndex(
-            envelope.metadata.input_name.c_str());
-        if (input_index < 0 || !candidate->BindingIsInput(input_index)) {
-            reason = "cached engine input binding does not match cache metadata";
+        const auto* input_name = envelope.metadata.input_name.c_str();
+        if (candidate->GetTensorIOMode(input_name) != dl::nne::kIOModeInput) {
+            reason = "cached engine input IO tensor does not match cache metadata";
             return false;
         }
         if (envelope.metadata.input_type != TensorDataType::Unknown &&
-            to_data_type(candidate->GetBindingDataType(input_index)) !=
+            to_data_type(candidate->GetTensorDataType(input_name)) !=
                 envelope.metadata.input_type) {
             reason = "cached engine input dtype does not match cache metadata";
             return false;
@@ -762,14 +766,14 @@ bool try_load_cache(const std::string& path,
                  profile_index < envelope.metadata.optimization_profiles.size();
                  ++profile_index) {
                 const auto& expected_profile = envelope.metadata.optimization_profiles[profile_index];
-                if (to_shape(candidate->GetProfileDimensions(
-                        input_index, static_cast<int32_t>(profile_index),
+                if (to_shape(candidate->GetProfileShape(
+                        input_name, static_cast<int32_t>(profile_index),
                         dl::nne::kOptProfileMin)) != expected_profile.min_shape ||
-                    to_shape(candidate->GetProfileDimensions(
-                        input_index, static_cast<int32_t>(profile_index),
+                    to_shape(candidate->GetProfileShape(
+                        input_name, static_cast<int32_t>(profile_index),
                         dl::nne::kOptProfileOpt)) != expected_profile.opt_shape ||
-                    to_shape(candidate->GetProfileDimensions(
-                        input_index, static_cast<int32_t>(profile_index),
+                    to_shape(candidate->GetProfileShape(
+                        input_name, static_cast<int32_t>(profile_index),
                         dl::nne::kOptProfileMax)) != expected_profile.max_shape) {
                     reason = "cached engine optimization profile shapes do not match cache metadata";
                     return false;
@@ -840,14 +844,10 @@ struct DenglinSession::Impl {
     ContextPtr context;
     cudaStream_t stream{};
 
-    std::vector<std::string> binding_names;
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
-    std::unordered_map<std::string, int> binding_indices;
-
-    std::vector<void*> bindings;
-    std::vector<void*> owned_device_buffers;
-    std::vector<std::size_t> buffer_bytes;
+    std::unordered_map<std::string, void*> owned_device_buffers;
+    std::unordered_map<std::string, std::size_t> buffer_bytes;
 
     std::unordered_map<std::string, std::vector<std::uint8_t>> host_inputs;
     std::unordered_map<std::string, const void*> device_inputs;
@@ -856,7 +856,6 @@ struct DenglinSession::Impl {
     std::unordered_map<std::string, std::size_t> device_output_bytes;
     std::unordered_map<std::string, Tensor> outputs;
     std::unordered_map<std::string, std::vector<int64_t>> output_shapes;
-    bool use_tensor_api{};
     bool output_host_copy{true};
     bool cache_hit{};
     bool pending{};
@@ -865,19 +864,16 @@ struct DenglinSession::Impl {
         if (stream) cudaStreamSynchronize(stream);
         pending = false;
         context.reset();
-        for (void* buffer : owned_device_buffers) {
-            if (buffer) cudaFree(buffer);
+        for (const auto& item : owned_device_buffers) {
+            if (item.second) cudaFree(item.second);
         }
         if (stream) cudaStreamDestroy(stream);
         engine.reset();
     }
 
-    int binding(const std::string& name) const {
-        const auto it = binding_indices.find(name);
-        if (it == binding_indices.end()) {
+    void require_tensor(const std::string& name) const {
+        if (engine->GetTensorIOMode(name.c_str()) == dl::nne::kIOModeNone)
             throw std::invalid_argument("Unknown Denglin tensor: " + name);
-        }
-        return it->second;
     }
 
     void ensure_idle(const char* operation) const {
@@ -887,62 +883,47 @@ struct DenglinSession::Impl {
         }
     }
 
-    dl::nne::Dims binding_dimensions(int index) const {
-        if (use_tensor_api && index >= 0 &&
-            index < static_cast<int>(binding_names.size())) {
-            const auto tensor_dims = context->GetTensorShape(
-                binding_names[static_cast<std::size_t>(index)].c_str());
-            if (!has_unresolved_dimension(tensor_dims)) return tensor_dims;
-        }
-        auto dims = context->GetBindingDimensions(index);
+    dl::nne::Dims tensor_dimensions(const std::string& name) const {
+        auto dims = context->GetTensorShape(name.c_str());
         if (!has_unresolved_dimension(dims)) return dims;
-
-        const auto engine_dims = engine->GetBindingDimensions(index);
+        const auto engine_dims = engine->GetTensorShape(name.c_str());
         if (!has_unresolved_dimension(engine_dims)) return engine_dims;
 
         if (engine->GetNbOptimizationProfiles() > 0) {
             const auto active_profile = context->GetOptimizationProfile();
             const int profile = active_profile < 0 ? 0 : static_cast<int>(active_profile);
-            const auto profile_dims = engine->GetProfileDimensions(
-                index, profile, dl::nne::kOptProfileOpt);
+            const auto profile_dims = engine->GetProfileShape(
+                name.c_str(), profile, dl::nne::kOptProfileOpt);
             if (!has_unresolved_dimension(profile_dims)) return profile_dims;
         }
         return dims;
     }
 
-    dl::nne::Dims allocation_dimensions(int index) const {
-        auto dims = binding_dimensions(index);
+    dl::nne::Dims allocation_dimensions(const std::string& name) const {
+        auto dims = tensor_dimensions(name);
         if (!has_unresolved_dimension(dims)) return dims;
         if (engine->GetNbOptimizationProfiles() > 0) {
             const auto active_profile = context->GetOptimizationProfile();
             const int profile = active_profile < 0 ? 0 : static_cast<int>(active_profile);
-            const auto profile_dims = engine->GetProfileDimensions(
-                index, profile, dl::nne::kOptProfileMax);
+            const auto profile_dims = engine->GetProfileShape(
+                name.c_str(), profile, dl::nne::kOptProfileMax);
             if (!has_unresolved_dimension(profile_dims)) return profile_dims;
         }
-        throw std::runtime_error("Denglin tensor shape is unresolved: " +
-                                 binding_names[static_cast<std::size_t>(index)]);
+        throw std::runtime_error("Denglin tensor shape is unresolved: " + name);
     }
 
-    std::size_t binding_bytes(int index, const dl::nne::Dims& dims) const {
-        auto bytes = tensor_bytes(dims, engine->GetBindingDataType(index));
-        // The legacy Enqueue API carries batch_size separately for implicit
-        // batch engines. Match the SDK samples by accounting for that batch
-        // multiplier when sizing input and output bindings.
-        if (engine->HasImplicitBacthDimension()) {
-            const auto batch = static_cast<std::size_t>(options.batch_size);
-            if (batch > std::numeric_limits<std::size_t>::max() / bytes) {
-                throw std::overflow_error("Denglin batch byte size overflow");
-            }
-            bytes *= batch;
-        }
-        return bytes;
+    std::size_t tensor_bytes_for(const std::string& name,
+                                 const dl::nne::Dims& dims) const {
+        const auto type = engine->GetTensorDataType(name.c_str());
+        if (type == dl::nne::kUNKNOWN_TYPE)
+            throw std::runtime_error("Denglin tensor data type is unknown: " + name);
+        return tensor_bytes(dims, type);
     }
 
-    void ensure_device_buffer(int index, std::size_t bytes) {
+    void ensure_device_buffer(const std::string& name, std::size_t bytes) {
         if (bytes == 0) throw std::runtime_error("Denglin tensor has zero bytes");
-        auto& owned = owned_device_buffers[static_cast<std::size_t>(index)];
-        auto& capacity = buffer_bytes[static_cast<std::size_t>(index)];
+        auto& owned = owned_device_buffers[name];
+        auto& capacity = buffer_bytes[name];
         if (owned && capacity >= bytes) return;
         if (owned) check_cuda(cudaFree(owned), "cudaFree(Denglin buffer)");
         owned = nullptr;
@@ -951,7 +932,6 @@ struct DenglinSession::Impl {
     }
 
     void set_tensor_address(const std::string& name, void* address) {
-        if (!use_tensor_api) return;
         if (!context->SetTensorAddress(name.c_str(), address)) {
             throw std::runtime_error("Denglin SetTensorAddress failed: " + name);
         }
@@ -1034,23 +1014,14 @@ DenglinSession DenglinSession::load(const std::string& model_path,
             BuilderPtr builder(dl::nne::CreateInferBuilder());
             if (!builder) throw std::runtime_error("Denglin builder creation failed");
 
-            const bool dynamic_input = std::any_of(
-                impl->options.input_shape.begin(), impl->options.input_shape.end(),
-                [](std::int64_t dimension) { return dimension < 0; });
-            NetworkPtr network(dynamic_input ||
-                                   !impl->options.optimization_profiles.empty()
-                               ? builder->CreateNetworkV2(dl::nne::kEXPLICIT_BATCH)
-                               : builder->CreateNetwork());
+            // Match Denglin's supported Python Builder chain.  Its ONNX/MLIR
+            // parser creates an implicit-batch network with CreateNetwork();
+            // several SDK v2 releases corrupt memory while BuildEngine is
+            // called for the same graph created with CreateNetworkV2().
+            NetworkPtr network(builder->CreateNetwork());
             if (!network) throw std::runtime_error("Denglin network creation failed");
 
-            dl::nne::BuilderConfig builder_config{};
-            builder_config.max_batch_size = impl->options.max_batch_size;
-            builder_config.ws_mode = to_sdk_weight_share(impl->options.weight_share);
-            builder_config.flags = impl->options.builder_flags;
-            builder->SetBuilderConfig(builder_config);
-            if (impl->options.builder_flags != 0) {
-                builder->SetFlags(impl->options.builder_flags);
-            }
+            const auto input_dims = to_dims(impl->options.input_shape, true);
 
             ParserPtr parser(dl::nne::CreateParser());
             if (!parser) throw std::runtime_error("Denglin parser creation failed");
@@ -1071,9 +1042,18 @@ DenglinSession DenglinSession::load(const std::string& model_path,
                 }
             }
 
-            const auto input_dims = to_dims(impl->options.input_shape, true);
-            if (!parser->RegisterInput(impl->options.input_name.c_str(),
-                                       input_dims,
+            // The v2 parser uses these registrations to forward the concrete
+            // input/output signature to `dl convert`.  Without them its
+            // Windows ONNX path may emit an incomplete Relay module (the log
+            // reports "Current mod has 0 exprs") and later crash in the
+            // compiler.  RegisterInput must receive the complete ONNX shape,
+            // including batch; the converter's Relay type checker expects the
+            // same rank as the model input even when the SDK network is
+            // implicit-batch.
+            const auto parser_input_dims = input_dims;
+            if (network->HasImplicitBatchDimension() &&
+                !parser->RegisterInput(impl->options.input_name.c_str(),
+                                       parser_input_dims,
                                        to_sdk_format(impl->options.input_layout))) {
                 throw std::runtime_error("Denglin input registration failed: " +
                                          impl->options.input_name);
@@ -1086,6 +1066,20 @@ DenglinSession DenglinSession::load(const std::string& model_path,
             }
             if (!parser->Parse(model_path.c_str(), *network)) {
                 throw std::runtime_error("Denglin ONNX parse failed: " + model_path);
+            }
+
+            // Keep the order used by sdk/python/tvm/dl/.../executor.py:
+            // parse first, then assign max batch/config, then build.
+            dl::nne::BuilderConfig builder_config{};
+            builder_config.max_batch_size = impl->options.max_batch_size;
+            if (!has_unresolved_dimension(input_dims) && input_dims.nbDims > 0)
+                builder_config.max_batch_size = input_dims.d[0];
+            builder->SetMaxBatchSize(builder_config.max_batch_size);
+            builder_config.ws_mode = to_sdk_weight_share(impl->options.weight_share);
+            builder_config.flags = impl->options.builder_flags;
+            builder->SetBuilderConfig(builder_config);
+            if (impl->options.builder_flags != 0) {
+                builder->SetFlags(impl->options.builder_flags);
             }
 
             for (const auto& profile_options : impl->options.optimization_profiles) {
@@ -1116,8 +1110,17 @@ DenglinSession DenglinSession::load(const std::string& model_path,
                 }
             }
 
-            impl->engine.reset(builder->BuildEngine(*network));
-            if (!impl->engine) throw std::runtime_error("Denglin engine build failed");
+            // The SDK's ONNX/Relay path is known to overrun its host state in
+            // BuildEngine() on some Windows v2 releases after optimization.
+            // BuildSerializedNetwork() uses the same compiler but skips the
+            // intermediate Engine wrapper; deserialize that payload so the
+            // rest of the session still uses the normal Engine/Context API.
+            HostMemoryPtr serialized(builder->BuildSerializedNetwork(*network));
+            if (!serialized || !serialized->Data() || serialized->Size() == 0) {
+                throw std::runtime_error("Denglin serialized engine build failed");
+            }
+            impl->engine.reset(dl::nne::Deserialize(serialized->Data(), serialized->Size()));
+            if (!impl->engine) throw std::runtime_error("Denglin engine deserialization failed");
             built_from_onnx = true;
         }
     } else if (format == DenglinModelFormat::SerializedEngine) {
@@ -1185,37 +1188,18 @@ DenglinSession DenglinSession::load(const std::string& model_path,
     }
     check_cuda(cudaStreamCreate(&impl->stream), "cudaStreamCreate(Denglin)");
 
-    const int binding_count = impl->engine->GetNbBindings();
-    if (binding_count <= 0) throw std::runtime_error("Denglin engine has no bindings");
-    impl->binding_names.resize(static_cast<std::size_t>(binding_count));
-    impl->bindings.resize(static_cast<std::size_t>(binding_count), nullptr);
-    impl->owned_device_buffers.resize(static_cast<std::size_t>(binding_count), nullptr);
-    impl->buffer_bytes.resize(static_cast<std::size_t>(binding_count), 0);
-
-    for (int index = 0; index < binding_count; ++index) {
-        const char* name = impl->engine->GetBindingName(index);
-        if (!name || !*name) throw std::runtime_error("Denglin binding has no name");
-        impl->binding_names[static_cast<std::size_t>(index)] = name;
-        if (impl->binding_indices.emplace(name, index).second) {
-            if (impl->engine->BindingIsInput(index)) {
-                impl->input_names.emplace_back(name);
-            } else {
-                impl->output_names.emplace_back(name);
-            }
-        }
+    const int tensor_count = impl->engine->GetNbIOTensors();
+    if (tensor_count <= 0)
+        throw std::runtime_error("Denglin engine does not expose the required IO Tensor API");
+    for (int index = 0; index < tensor_count; ++index) {
+        const char* name = impl->engine->GetIOTensorName(index);
+        if (!name || !*name) throw std::runtime_error("Denglin IO tensor has no name");
+        const auto mode = impl->engine->GetTensorIOMode(name);
+        if (mode == dl::nne::kIOModeInput) impl->input_names.emplace_back(name);
+        else if (mode == dl::nne::kIOModeOutput) impl->output_names.emplace_back(name);
     }
-
-    const bool tensor_api_available = impl->engine->GetNbIOTensors() > 0;
-    if (impl->options.execution_mode == DenglinExecutionMode::TensorApi &&
-        !tensor_api_available) {
-        throw std::runtime_error(
-            "Denglin TensorApi execution was requested but the engine exposes no IO tensors");
-    }
-    // Auto prefers the modern tensor-address API. If an older serialized engine
-    // exposes no IO tensors, it transparently uses the legacy binding API.
-    // TensorApi remains strict and requires EnqueueV3 support.
-    impl->use_tensor_api = tensor_api_available &&
-        impl->options.execution_mode != DenglinExecutionMode::Bindings;
+    if (impl->input_names.empty() || impl->output_names.empty())
+        throw std::runtime_error("Denglin engine has no valid IO Tensor input/output");
 
     if (built_from_onnx &&
         impl->options.cache_mode == DenglinCacheMode::ReadWrite) {
@@ -1251,35 +1235,31 @@ std::vector<std::string> DenglinSession::output_names() const {
 
 std::vector<int64_t> DenglinSession::tensor_shape(const std::string& name) const {
     if (!impl_) throw std::runtime_error("Denglin session is not initialized");
-    return to_shape(impl_->binding_dimensions(impl_->binding(name)));
+    impl_->require_tensor(name);
+    return to_shape(impl_->tensor_dimensions(name));
 }
 
 void DenglinSession::set_shape(const std::string& name,
                                const std::vector<int64_t>& shape) {
     if (!impl_) throw std::runtime_error("Denglin session is not initialized");
     impl_->ensure_idle("set_shape");
-    const int index = impl_->binding(name);
-    if (!impl_->engine->BindingIsInput(index)) {
+    impl_->require_tensor(name);
+    if (impl_->engine->GetTensorIOMode(name.c_str()) != dl::nne::kIOModeInput) {
         throw std::invalid_argument("Only Denglin input tensors can have shapes set");
     }
     const auto dims = to_dims(shape);
-    const auto engine_dims = impl_->engine->GetBindingDimensions(index);
-    if (!has_unresolved_dimension(engine_dims) && to_shape(engine_dims) == shape) {
-        impl_->outputs.clear();
-        impl_->output_shapes.clear();
+    // Denglin's Tensor API treats SetInputShape as a dynamic-shape operation.
+    // On several SDK releases calling it for an already-static tensor changes
+    // the execution context state even when the supplied dimensions match.
+    // Keep static engines untouched; dynamic/profile engines still use the API.
+    const auto engine_dims = impl_->engine->GetTensorShape(name.c_str());
+    if (!has_unresolved_dimension(engine_dims)) {
+        if (to_shape(engine_dims) != shape) {
+            throw std::invalid_argument("Denglin static input shape does not match: " + name);
+        }
         return;
     }
-    bool accepted = false;
-    if (impl_->use_tensor_api) {
-        accepted = impl_->context->SetInputShape(name.c_str(), dims);
-    }
-    if (!accepted) {
-        accepted = impl_->context->SetBindingDimensions(index, dims);
-    }
-    if (!accepted && !impl_->use_tensor_api) {
-        accepted = impl_->context->SetInputShape(name.c_str(), dims);
-    }
-    if (!accepted) {
+    if (!impl_->context->SetInputShape(name.c_str(), dims)) {
         throw std::runtime_error("Denglin rejected input shape: " + name);
     }
     impl_->outputs.clear();
@@ -1320,14 +1300,14 @@ DenglinOptimizationProfile DenglinSession::optimization_profile_shapes(
     if (impl_->input_names.empty()) {
         throw std::runtime_error("Denglin engine has no input");
     }
-    const int index = impl_->binding(impl_->input_names.front());
+    const auto& input_name = impl_->input_names.front();
     DenglinOptimizationProfile result;
-    result.min_shape = to_shape(impl_->engine->GetProfileDimensions(
-        index, profile_index, dl::nne::kOptProfileMin));
-    result.opt_shape = to_shape(impl_->engine->GetProfileDimensions(
-        index, profile_index, dl::nne::kOptProfileOpt));
-    result.max_shape = to_shape(impl_->engine->GetProfileDimensions(
-        index, profile_index, dl::nne::kOptProfileMax));
+    result.min_shape = to_shape(impl_->engine->GetProfileShape(
+        input_name.c_str(), profile_index, dl::nne::kOptProfileMin));
+    result.opt_shape = to_shape(impl_->engine->GetProfileShape(
+        input_name.c_str(), profile_index, dl::nne::kOptProfileOpt));
+    result.max_shape = to_shape(impl_->engine->GetProfileShape(
+        input_name.c_str(), profile_index, dl::nne::kOptProfileMax));
     return result;
 }
 
@@ -1337,8 +1317,8 @@ void DenglinSession::set_input(const std::string& name,
     if (!impl_) throw std::runtime_error("Denglin session is not initialized");
     impl_->ensure_idle("set_input");
     if (!data && bytes != 0) throw std::invalid_argument("Denglin input data is null");
-    const int index = impl_->binding(name);
-    if (!impl_->engine->BindingIsInput(index)) {
+    impl_->require_tensor(name);
+    if (impl_->engine->GetTensorIOMode(name.c_str()) != dl::nne::kIOModeInput) {
         throw std::invalid_argument("Denglin tensor is not an input: " + name);
     }
     auto& input = impl_->host_inputs[name];
@@ -1346,7 +1326,6 @@ void DenglinSession::set_input(const std::string& name,
     if (bytes > 0) std::memcpy(input.data(), data, bytes);
     impl_->device_inputs.erase(name);
     impl_->device_input_bytes.erase(name);
-    (void)index;
 }
 
 void DenglinSession::set_input_device(const std::string& name,
@@ -1357,14 +1336,13 @@ void DenglinSession::set_input_device(const std::string& name,
     if (!device_data && bytes != 0) {
         throw std::invalid_argument("Denglin device input data is null");
     }
-    const int index = impl_->binding(name);
-    if (!impl_->engine->BindingIsInput(index)) {
+    impl_->require_tensor(name);
+    if (impl_->engine->GetTensorIOMode(name.c_str()) != dl::nne::kIOModeInput) {
         throw std::invalid_argument("Denglin tensor is not an input: " + name);
     }
     impl_->device_inputs[name] = device_data;
     impl_->device_input_bytes[name] = bytes;
     impl_->host_inputs.erase(name);
-    (void)index;
 }
 
 void DenglinSession::set_output_device(const std::string& name,
@@ -1375,8 +1353,8 @@ void DenglinSession::set_output_device(const std::string& name,
     if (!device_data && bytes != 0) {
         throw std::invalid_argument("Denglin device output data is null");
     }
-    const int index = impl_->binding(name);
-    if (impl_->engine->BindingIsInput(index)) {
+    impl_->require_tensor(name);
+    if (impl_->engine->GetTensorIOMode(name.c_str()) == dl::nne::kIOModeInput) {
         throw std::invalid_argument("Denglin tensor is not an output: " + name);
     }
     if (!device_data || bytes == 0) {
@@ -1403,17 +1381,13 @@ void DenglinSession::infer_async() {
     impl_->output_shapes.clear();
     try {
         const auto process_input = [&](const std::string& name) {
-            const int index = impl_->binding(name);
-            auto context_dims = impl_->context->GetBindingDimensions(index);
-            if (impl_->use_tensor_api) {
-                context_dims = impl_->context->GetTensorShape(name.c_str());
-            }
+            auto context_dims = impl_->context->GetTensorShape(name.c_str());
             if (has_unresolved_dimension(context_dims)) {
                 throw std::runtime_error(
                     "Denglin dynamic input dimensions were not specified: " + name);
             }
-            const auto dims = impl_->binding_dimensions(index);
-            const auto bytes = impl_->binding_bytes(index, dims);
+            const auto dims = impl_->tensor_dimensions(name);
+            const auto bytes = impl_->tensor_bytes_for(name, dims);
             const auto device_input = impl_->device_inputs.find(name);
             void* address = nullptr;
             if (device_input != impl_->device_inputs.end()) {
@@ -1428,22 +1402,49 @@ void DenglinSession::infer_async() {
                 if (input == impl_->host_inputs.end() || input->second.size() != bytes) {
                     throw std::runtime_error("Denglin input byte size mismatch: " + name);
                 }
-                impl_->ensure_device_buffer(index, bytes);
-                address = impl_->owned_device_buffers[static_cast<std::size_t>(index)];
+                impl_->ensure_device_buffer(name, bytes);
+                address = impl_->owned_device_buffers[name];
                 check_cuda(cudaMemcpyAsync(address, input->second.data(), bytes,
                                            cudaMemcpyHostToDevice, impl_->stream),
                            "cudaMemcpyAsync(Denglin H2D)");
             }
-            impl_->bindings[static_cast<std::size_t>(index)] = address;
             impl_->set_tensor_address(name, address);
         };
 
         for (const auto& name : impl_->input_names) process_input(name);
 
+        // Host vectors supplied through set_input() are pageable memory.  A
+        // few Denglin SDK/CUDA combinations return from cudaMemcpyAsync for
+        // pageable sources before the SDK's internal enqueue observes the
+        // copy, which makes EnqueueV3 consume stale input data.  Establish an
+        // explicit H2D completion point before registering/executing tensors.
+        check_cuda(cudaStreamSynchronize(impl_->stream),
+                   "cudaStreamSynchronize(Denglin H2D)");
+
+        // Tensor-address execution requires shape inference to complete before
+        // output addresses are registered. This is required by Denglin SDK
+        // builds even when the serialized engine has static dimensions.
+        std::vector<const char*> insufficient_names(
+            static_cast<std::size_t>(impl_->engine->GetNbIOTensors()), nullptr);
+        const auto inferred = impl_->context->InferShapes(
+            static_cast<int32_t>(insufficient_names.size()), insufficient_names.data());
+        if (inferred < 0) {
+            throw std::runtime_error("Denglin Tensor API shape inference failed");
+        }
+        if (inferred > 0) {
+            std::string missing = "Denglin Tensor API input shapes are incomplete";
+            for (int32_t index = 0; index < inferred; ++index) {
+                if (insufficient_names[static_cast<std::size_t>(index)]) {
+                    missing += ": ";
+                    missing += insufficient_names[static_cast<std::size_t>(index)];
+                }
+            }
+            throw std::runtime_error(missing);
+        }
+
         const auto prepare_output = [&](const std::string& name) {
-            const int index = impl_->binding(name);
-            const auto dims = impl_->allocation_dimensions(index);
-            const auto bytes = impl_->binding_bytes(index, dims);
+            const auto dims = impl_->allocation_dimensions(name);
+            const auto bytes = impl_->tensor_bytes_for(name, dims);
             void* address = nullptr;
             const auto external = impl_->device_outputs.find(name);
             if (external != impl_->device_outputs.end()) {
@@ -1454,46 +1455,32 @@ void DenglinSession::infer_async() {
                 }
                 address = external->second;
             } else {
-                impl_->ensure_device_buffer(index, bytes);
-                address = impl_->owned_device_buffers[static_cast<std::size_t>(index)];
+                impl_->ensure_device_buffer(name, bytes);
+                address = impl_->owned_device_buffers[name];
             }
-            impl_->bindings[static_cast<std::size_t>(index)] = address;
             impl_->set_tensor_address(name, address);
         };
 
         for (const auto& name : impl_->output_names) prepare_output(name);
 
-        bool enqueued = false;
         const auto stream = reinterpret_cast<void*>(impl_->stream);
-        if (impl_->use_tensor_api) {
-            enqueued = impl_->context->EnqueueV3(stream);
-            if (!enqueued &&
-                impl_->options.execution_mode == DenglinExecutionMode::TensorApi) {
-                throw std::runtime_error(
-                    "Denglin EnqueueV3 failed for TensorApi execution mode");
-            }
-        }
-        if (!enqueued && impl_->engine->HasImplicitBacthDimension()) {
-            enqueued = impl_->context->Enqueue(
-                impl_->options.batch_size, impl_->bindings.data(), stream, nullptr);
-        } else if (!enqueued) {
-            enqueued = impl_->context->EnqueueV2(
-                impl_->bindings.data(), stream, nullptr);
-        }
-        if (!enqueued) throw std::runtime_error("Denglin inference execution failed");
+        if (!impl_->context->EnqueueV3(stream))
+            throw std::runtime_error("Denglin EnqueueV3 inference execution failed");
+
+        // Some Denglin SDK releases enqueue plugin work on an internal stream
+        // even when EnqueueV3 receives a caller stream.  Synchronizing the
+        // device here establishes a completion point before any D2H copy and
+        // prevents stale/partially-written output tensors. The public API
+        // remains enqueue+synchronize; this is an SDK compatibility fence.
+        check_cuda(cudaDeviceSynchronize(), "cudaDeviceSynchronize(Denglin EnqueueV3)");
 
         for (const auto& name : impl_->output_names) {
-            const int index = impl_->binding(name);
-            auto dims = impl_->context->GetBindingDimensions(index);
-            if (impl_->use_tensor_api) {
-                dims = impl_->context->GetTensorShape(name.c_str());
-            }
-            if (has_unresolved_dimension(dims)) dims = impl_->allocation_dimensions(index);
-            const auto type = impl_->engine->GetBindingDataType(index);
-            const auto bytes = impl_->binding_bytes(index, dims);
+            auto dims = impl_->context->GetTensorShape(name.c_str());
+            if (has_unresolved_dimension(dims)) dims = impl_->allocation_dimensions(name);
+            const auto bytes = impl_->tensor_bytes_for(name, dims);
             const auto external = impl_->device_outputs.find(name);
             if (external == impl_->device_outputs.end() &&
-                impl_->buffer_bytes[static_cast<std::size_t>(index)] < bytes) {
+                impl_->buffer_bytes[name] < bytes) {
                 throw std::runtime_error(
                     "Denglin output buffer is smaller than resolved output: " + name);
             }
@@ -1503,13 +1490,15 @@ void DenglinSession::infer_async() {
             Tensor output;
             output.name = name;
             output.shape = to_shape(dims);
-            output.data_type = to_data_type(type);
+            output.data_type = to_data_type(impl_->engine->GetTensorDataType(name.c_str()));
             output.data.resize(bytes);
             auto [it, inserted] = impl_->outputs.emplace(name, std::move(output));
             (void)inserted;
+            const auto output_address = external != impl_->device_outputs.end()
+                ? external->second : impl_->owned_device_buffers[name];
             check_cuda(cudaMemcpyAsync(
                            it->second.data.data(),
-                           impl_->bindings[static_cast<std::size_t>(index)], bytes,
+                           output_address, bytes,
                            cudaMemcpyDeviceToHost, impl_->stream),
                        "cudaMemcpyAsync(Denglin D2H)");
         }
@@ -1593,20 +1582,23 @@ std::vector<const Tensor*> DenglinSession::output_refs() const {
 
 const void* DenglinSession::device_output(const std::string& name) const {
     if (!impl_) throw std::runtime_error("Denglin session is not initialized");
-    const int index = impl_->binding(name);
-    if (impl_->engine->BindingIsInput(index)) {
+    impl_->require_tensor(name);
+    if (impl_->engine->GetTensorIOMode(name.c_str()) == dl::nne::kIOModeInput) {
         throw std::invalid_argument("Denglin tensor is not an output: " + name);
     }
     if (impl_->output_shapes.find(name) == impl_->output_shapes.end()) {
         throw std::invalid_argument("Denglin output tensor is unavailable: " + name);
     }
-    return impl_->bindings[static_cast<std::size_t>(index)];
+    const auto external = impl_->device_outputs.find(name);
+    if (external != impl_->device_outputs.end()) return external->second;
+    const auto owned = impl_->owned_device_buffers.find(name);
+    return owned == impl_->owned_device_buffers.end() ? nullptr : owned->second;
 }
 
 std::vector<int64_t> DenglinSession::device_output_shape(const std::string& name) const {
     if (!impl_) throw std::runtime_error("Denglin session is not initialized");
-    const int index = impl_->binding(name);
-    if (impl_->engine->BindingIsInput(index)) {
+    impl_->require_tensor(name);
+    if (impl_->engine->GetTensorIOMode(name.c_str()) == dl::nne::kIOModeInput) {
         throw std::invalid_argument("Denglin tensor is not an output: " + name);
     }
     const auto it = impl_->output_shapes.find(name);
@@ -1618,14 +1610,14 @@ std::vector<int64_t> DenglinSession::device_output_shape(const std::string& name
 
 TensorDataType DenglinSession::device_output_type(const std::string& name) const {
     if (!impl_) throw std::runtime_error("Denglin session is not initialized");
-    const int index = impl_->binding(name);
-    if (impl_->engine->BindingIsInput(index)) {
+    impl_->require_tensor(name);
+    if (impl_->engine->GetTensorIOMode(name.c_str()) == dl::nne::kIOModeInput) {
         throw std::invalid_argument("Denglin tensor is not an output: " + name);
     }
     if (impl_->output_shapes.find(name) == impl_->output_shapes.end()) {
         throw std::invalid_argument("Denglin output tensor is unavailable: " + name);
     }
-    return to_data_type(impl_->engine->GetBindingDataType(index));
+    return to_data_type(impl_->engine->GetTensorDataType(name.c_str()));
 }
 
 void* DenglinSession::cuda_stream() const noexcept {

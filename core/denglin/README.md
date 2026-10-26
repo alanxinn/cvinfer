@@ -19,6 +19,11 @@ preset 已将该选项打开。
 - device input/device output 直连和 `EnqueueV3` tensor-address API；
 - `infer_async()`/`enqueue()` + `synchronize()` 异步执行接口。
 
+执行接口按 engine 的 batch 模式选择：SDK `nnexec` 默认生成的隐式 batch
+engine 使用 `Enqueue(batch_size, bindings, stream, nullptr)`，显式 batch
+engine 使用 `EnqueueV3(stream)`。两条路径均支持 Host/Device 输入输出；
+隐式 batch 的 binding 数组由 session 持有，覆盖异步执行期间的生命周期。
+
 YOLO/RF-DETR 不直接依赖本目录的具体类，而是通过
 `core::create_inference_session()` 和 `Config::inference_backend` 选择
 Denglin；C ABI/C# 的 `Denglin` 选项也沿用这条链路。

@@ -62,6 +62,49 @@ set(TENSORRT_ROOT "" CACHE PATH "TensorRT root directory")
 set(DENGLIN_SDK_ROOT "" CACHE PATH "Denglin Hamming SDK root")
 set(OPENCV_ROOT "" CACHE PATH "OpenCV root directory or install prefix")
 
+if(BUILD_DENGLIN_BACKEND)
+  set(_denglin_sdk_candidates
+    "${DENGLIN_SDK_ROOT}"
+    "$ENV{DENGLIN_SDK_ROOT}"
+    "$ENV{DENGLIN_ROOT}"
+    "$ENV{DLGPU_ROOT}"
+    "$ENV{DLGPU_HOME}"
+    "$ENV{DLICC_PATH}/.."
+    "$ENV{DENGLIN_ROOT}/sdk"
+    "$ENV{DLGPU_ROOT}/sdk"
+    "$ENV{DLGPU_HOME}/sdk"
+    "$ENV{ProgramFiles}/Denglin"
+    "$ENV{ProgramFiles}/Denglin/sdk"
+    "C:/Program Files/dlgpu/sdk"
+    "C:/dlgpu/sdk"
+    "D:/dlgpu/sdk"
+    "E:/dlgpu/sdk"
+    "C:/denglin-hamming/sdk"
+    "D:/denglin-hamming/sdk"
+    "E:/denglin-hamming/sdk")
+
+  set(_denglin_sdk_found "")
+  foreach(_candidate IN LISTS _denglin_sdk_candidates)
+    if(_candidate AND EXISTS "${_candidate}/include/dlnne/dlnne.h")
+      get_filename_component(_denglin_sdk_found "${_candidate}" ABSOLUTE)
+      break()
+    endif()
+  endforeach()
+
+  if(_denglin_sdk_found)
+    set(DENGLIN_SDK_ROOT "${_denglin_sdk_found}" CACHE PATH
+      "Denglin Hamming SDK root" FORCE)
+    message(STATUS "Denglin SDK found: ${DENGLIN_SDK_ROOT}")
+  else()
+    set(DENGLIN_SDK_ROOT "" CACHE PATH
+      "Denglin Hamming SDK root" FORCE)
+    message(STATUS
+      "Denglin SDK was not found in configured paths or common local locations")
+  endif()
+  unset(_denglin_sdk_candidates)
+  unset(_denglin_sdk_found)
+endif()
+
 if(NOT CUDA_ROOT)
   if(CMAKE_CUDA_COMPILER)
     get_filename_component(_cuda_bin_dir "${CMAKE_CUDA_COMPILER}" DIRECTORY)
@@ -280,10 +323,10 @@ function(cvinfer_enable_delay_load TARGET_NAME)
 endfunction()
 
 
-option(BUILD_CVINFER_DLL "Build C# compatible cvinfer DLL" ON)
+option(BUILD_CVINFER_DLL "Build C# compatible cvinfer DLL" OFF)
 option(BUILD_TRT_ONNX_BUILDER_DLL
   "Build the TensorRT C++ ONNX-to-engine builder DLL"
-  ON)
+  OFF)
 add_subdirectory(core)
 if(BUILD_TRT_ONNX_BUILDER_DLL)
   add_subdirectory(tensorrt_builder)

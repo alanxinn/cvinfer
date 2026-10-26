@@ -843,6 +843,7 @@ struct DenglinSession::Impl {
     EnginePtr engine;
     ContextPtr context;
     cudaStream_t stream{};
+    std::vector<void*> implicit_bindings;
 
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
@@ -934,6 +935,13 @@ struct DenglinSession::Impl {
     void set_tensor_address(const std::string& name, void* address) {
         if (!context->SetTensorAddress(name.c_str(), address)) {
             throw std::runtime_error("Denglin SetTensorAddress failed: " + name);
+        }
+        if (!implicit_bindings.empty()) {
+            const auto index = engine->GetBindingIndex(name.c_str());
+            if (index < 0 || static_cast<std::size_t>(index) >= implicit_bindings.size()) {
+                throw std::runtime_error("Denglin input/output binding was not found: " + name);
+            }
+            implicit_bindings[static_cast<std::size_t>(index)] = address;
         }
     }
 };
@@ -1187,6 +1195,12 @@ DenglinSession DenglinSession::load(const std::string& model_path,
         }
     }
     check_cuda(cudaStreamCreate(&impl->stream), "cudaStreamCreate(Denglin)");
+    if (impl->engine->HasImplicitBacthDimension()) {
+        const auto binding_count = impl->engine->GetNbBindings();
+        if (binding_count <= 0)
+            throw std::runtime_error("Denglin implicit-batch engine has no bindings");
+        impl->implicit_bindings.resize(static_cast<std::size_t>(binding_count), nullptr);
+    }
 
     const int tensor_count = impl->engine->GetNbIOTensors();
     if (tensor_count <= 0)
@@ -1464,15 +1478,23 @@ void DenglinSession::infer_async() {
         for (const auto& name : impl_->output_names) prepare_output(name);
 
         const auto stream = reinterpret_cast<void*>(impl_->stream);
-        if (!impl_->context->EnqueueV3(stream))
+        // nnexec produces implicit-batch engines by default. The SDK accepts
+        // their tensor addresses but rejects EnqueueV3; they require the
+        // binding-array API with an explicit execution batch size.
+        if (!impl_->implicit_bindings.empty()) {
+            if (!impl_->context->Enqueue(impl_->options.batch_size,
+                                        impl_->implicit_bindings.data(), stream, nullptr))
+                throw std::runtime_error("Denglin implicit-batch Enqueue inference execution failed");
+        } else if (!impl_->context->EnqueueV3(stream)) {
             throw std::runtime_error("Denglin EnqueueV3 inference execution failed");
+        }
 
         // Some Denglin SDK releases enqueue plugin work on an internal stream
         // even when EnqueueV3 receives a caller stream.  Synchronizing the
         // device here establishes a completion point before any D2H copy and
         // prevents stale/partially-written output tensors. The public API
         // remains enqueue+synchronize; this is an SDK compatibility fence.
-        check_cuda(cudaDeviceSynchronize(), "cudaDeviceSynchronize(Denglin EnqueueV3)");
+        check_cuda(cudaDeviceSynchronize(), "cudaDeviceSynchronize(Denglin inference)");
 
         for (const auto& name : impl_->output_names) {
             auto dims = impl_->context->GetTensorShape(name.c_str());

@@ -8,7 +8,10 @@ endif()
 if(NOT DENGLIN_SDK_ROOT OR
    NOT EXISTS "${DENGLIN_SDK_ROOT}/include/dlnne/dlnne.h")
   message(FATAL_ERROR
-    "Denglin SDK was not found. Set DENGLIN_SDK_ROOT to the SDK root.")
+    "Denglin SDK was not found. Automatic detection checks DENGLIN_SDK_ROOT, "
+    "DENGLIN_ROOT, DLGPU_ROOT, DLGPU_HOME and DLICC_PATH, plus common "
+    "install locations. Set DENGLIN_SDK_ROOT to the directory containing "
+    "include/dlnne/dlnne.h.")
 endif()
 
 add_library(alanxinn_cvinfer_core_denglin STATIC

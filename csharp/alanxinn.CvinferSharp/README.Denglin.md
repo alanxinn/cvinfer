@@ -18,7 +18,7 @@ using var model = new CvinferModel(
 ```
 
 The package is Windows x64 and requires a Denglin engine/cache produced for the
-same Denglin SDK/device runtime. It also carries the SDK accelerator loader
+same Denglin SDK/device runtime. It also carries the SDK device runtime loader
 under `runtimes/win-x64/hc2` and `runtimes/win-x64/hc3`; the package build
 targets copy these directories beside the native runtime automatically, so no
 manual DLL copying is required.

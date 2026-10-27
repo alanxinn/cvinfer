@@ -67,9 +67,6 @@ alanxinn.CvinferDemo.exe `
 `warmup` 不计入统计，`iterations` 为正式统计次数。
 计时默认关闭，需要输出耗时统计时添加 `--timing`。
 
-RF-DETR 当前前处理、后处理使用 CPU；TensorRT 推理仍在 GPU 上执行。
-显式选择 RF-DETR 的 `cuda` 前后处理会返回不支持错误。
-
 ## 构建
 
 标准双后端构建（该 preset 继承的 base 已启用 Denglin）：
@@ -79,21 +76,14 @@ cmake --preset ninja-msvc-release
 cmake --build --preset build-ninja-msvc-release
 ```
 
-私有 CUDA backend：
-
-```powershell
-cmake --preset ninja-msvc-private-cuda-release
-cmake --build --preset build-ninja-msvc-private-cuda-release
-```
-
 需要配置 `CUDA_ROOT`、`TENSORRT_ROOT`、`OPENCV_ROOT`。
-上述两个 preset 还会使用 `DENGLIN_SDK_ROOT` 构建 Denglin；如果只需要
+该 preset 还会使用 `DENGLIN_SDK_ROOT` 构建 Denglin；如果只需要
 TensorRT，可在自定义配置时显式设置 `-DBUILD_DENGLIN_BACKEND=OFF`。
 构建产物位于：
 
 - `build/<preset>/bin/alanxinn_cvinfer_trt.dll`：TensorRT native API；
 - `build/<preset>/bin/alanxinn_cvinfer_denglin.dll`：Denglin native API（启用 Denglin 时生成）；
-- `build/<preset>/bintrt`：TensorRT/CUDA/OpenCV 及可选 CUDA backend runtime；
+- `build/<preset>/bintrt`：TensorRT/CUDA/OpenCV runtime；
 - `build/<preset>/bindl`：Denglin SDK runtime（含 `hc2`/`hc3` loader）；
 - `build/<preset>/tensorrt_builder`：ONNX builder DLL。
 

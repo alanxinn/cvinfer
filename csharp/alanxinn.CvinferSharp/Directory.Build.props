@@ -5,7 +5,7 @@
     two projects use custom subdirectories under bin/ and obj/.
   -->
   <PropertyGroup>
-    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;**/private/**;**/cvinfer_private/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <!--

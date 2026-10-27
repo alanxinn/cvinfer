@@ -7,7 +7,6 @@
 - YOLO11/RF-DETR 检测、分割和 Pose；
 - BGR 图像推理；
 - 检测框、Mask、耗时读取；
-- CPU/CUDA backend 配置；
 - TensorRT/Denglin 推理后端选择；
 - 非托管资源释放。
 
@@ -92,9 +91,6 @@ opencv_world*.dll
 该推理包中；它们由 `alanxinn.TensorRtOnnxBuilder` 的 `TensorRtRuntime`
 单独提供。若某个已构建 engine 依赖额外 TensorRT plugin，应用还需自行部署
 对应 plugin DLL。
-
-CUDA 前后处理还需要可选的 `alanxinn_cvinfer_cuda.dll`，仍放在同一个
-`runtimes/win-x64/native/` 资产目录。
 
 `alanxinn.CvinferSharp.Denglin`（Denglin 包）包含：
 

@@ -48,6 +48,7 @@ New-Item -ItemType Directory -Path $staging | Out-Null
 $script:DenglinSdkFileLinks = [Collections.Generic.List[string]]::new()
 
 function Test-SkippedName([System.IO.FileSystemInfo] $item, [bool] $isPythonRoot) {
+    if ($item.Name -in @('cvinfer_private', 'alanxinn_cvinfer_denglin_accel.dll', 'alanxinn_cvinfer_cuda.dll')) { return $true }
     if ($item.Name -in @('__pycache__', '.git', '.vs', 'obj', 'build', 'tests', 'test', 'samples')) { return $true }
     if ($item.Extension -in @('.pdb', '.ilk', '.obj', '.pyc')) { return $true }
     if ($isPythonRoot -and -not $IncludeOptionalPythonPackages -and
@@ -69,6 +70,8 @@ function Copy-FilteredTree([string] $source, [string] $destination,
     New-Item -ItemType Directory -Force -Path $destination | Out-Null
     foreach ($item in Get-ChildItem -LiteralPath $source -Force) {
         if (Test-SkippedName $item $isPythonRoot) { continue }
+        if ($archiveRoot -eq 'native' -and ($item.Name -eq 'private' -or
+            (-not $item.PSIsContainer -and $item.Extension -ne '.dll'))) { continue }
         $target = Join-Path $destination $item.Name
         if ($item.PSIsContainer) {
             Copy-FilteredTree $item.FullName $target $archiveRoot $isPythonRoot

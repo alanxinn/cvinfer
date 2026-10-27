@@ -60,6 +60,7 @@ csharp/**/bin/
 csharp/**/obj/
 
 private/
+cvinfer_private/
 package/
 
 # model weights

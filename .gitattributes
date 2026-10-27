@@ -1,0 +1,3 @@
+# Private acceleration implementations must never appear in source archives.
+/private export-ignore
+/cvinfer_private export-ignore

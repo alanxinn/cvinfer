@@ -67,8 +67,6 @@ TensorRT runtime 输出到 `bintrt`，Denglin runtime 输出到 `bindl`。两套
 DLL 不再共享 CUDA/设备 runtime，避免 TensorRT 的 `cudart` 与 Denglin 的
 `curt` 在同一 native 模块中冲突。
 
-CUDA backend 为可选 DLL。未部署时 `auto`、`cpu` 可用，显式 `cuda` 会报错。
-
 计时默认关闭；模型创建后可调用
 `cvinfer_model_set_timing_enabled(model, 1)` 开启计时，结果中的
 `cvinfer_timing_t` 才会填充耗时数据。

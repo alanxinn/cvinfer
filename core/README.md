@@ -65,7 +65,7 @@ session.infer();
 auto outputs = session.outputs();
 ```
 
-CUDA 后处理：
+设备输入输出：
 
 ```cpp
 session.set_input_device(input, device_data, device_bytes);
@@ -88,8 +88,7 @@ Denglin 阶段三增加动态输入 profile、`set_shape()` 运行时 shape 切�
 `infer_async()`/`enqueue()` 和 `synchronize()`。支持 tensor-address API 的
 engine 使用 `SetTensorAddress` + `EnqueueV3`，旧 engine 自动使用 binding
 指针和 `EnqueueV2`/`Enqueue`。异步调用返回后，调用方必须等
-`synchronize()` 再复用输入或读取 host output；device output 可在同一 CUDA
-stream 上继续排队后处理。
+`synchronize()` 再复用输入或读取 host output。
 
 构建产物：
 

@@ -47,8 +47,8 @@ rf-detr-seg
 --output PATH
 --classes N                 可选；默认按 engine 输出自动推断
 --backend tensorrt|denglin  推理引擎后端（Denglin 需启用 native backend）
---preprocess auto|cpu|cuda
---postprocess auto|cpu|cuda
+--preprocess auto|cpu
+--postprocess auto|cpu
 --warmup N
 --iterations N
 --timing                    可选；开启预处理、推理和后处理计时

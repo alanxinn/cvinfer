@@ -36,14 +36,12 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <PlatformTarget>x64</PlatformTarget>
 
-    <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin\alanxinn_cvinfer_trt.dll')">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\bin</NativeRuntimeSource>
     <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build-denglin\bin\$(Configuration)\alanxinn_cvinfer_trt.dll')">$(MSBuildProjectDirectory)\..\..\build-denglin\bin\$(Configuration)</NativeRuntimeSource>
     <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == ''">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-release\bin</NativeRuntimeSource>
     <NativeTrtRuntimeSource Condition="'$(NativeTrtRuntimeSource)' == '' and Exists('$(NativeRuntimeSource)\..\bintrt\nvinfer.dll')">$(NativeRuntimeSource)\..\bintrt</NativeTrtRuntimeSource>
     <NativeTrtRuntimeSource Condition="'$(NativeTrtRuntimeSource)' == ''">$(NativeRuntimeSource)</NativeTrtRuntimeSource>
     <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64</NativeRuntimeDestination>
     <NativeCvinferLibraryName>alanxinn_cvinfer_trt.dll</NativeCvinferLibraryName>
-    <AlanxinnCudaBackendFile>$(NativeTrtRuntimeSource)\alanxinn_cvinfer_cuda.dll</AlanxinnCudaBackendFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -77,8 +75,6 @@
     <ItemGroup>
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\$(NativeCvinferLibraryName)"
                                   Condition="Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
-      <AlanxinnNativeRuntimeFiles Include="$(AlanxinnCudaBackendFile)"
-                                  Condition="Exists('$(AlanxinnCudaBackendFile)')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\nvinfer.dll"
                                   Condition="Exists('$(NativeTrtRuntimeSource)\nvinfer.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\cudart64_*.dll" />
@@ -116,12 +112,7 @@
     <Message Importance="High"
              Text="Native runtime DLLs selected: @(AlanxinnNativeRuntimeFiles)"
              Condition="'@(AlanxinnNativeRuntimeFiles)' != ''" />
-    <Message Importance="High"
-             Text="CUDA backend enabled: $(AlanxinnCudaBackendFile)"
-             Condition="Exists('$(AlanxinnCudaBackendFile)')" />
-    <Message Importance="High"
-             Text="CUDA backend skipped (DLL not found): $(AlanxinnCudaBackendFile)"
-             Condition="!Exists('$(AlanxinnCudaBackendFile)')" />
+    <Message Importance="High" Text="Public NuGet excludes all private GPU preprocessing/postprocessing DLLs." />
   </Target>
 
   <PropertyGroup>
@@ -131,13 +122,11 @@
   </PropertyGroup>
 
   <Target Name="PackAlanxinnNativeRuntime"
-          DependsOnTargets="CopyAlanxinnNativeRuntime"
+          DependsOnTargets="ValidateAlanxinnNativeRuntime;CopyAlanxinnNativeRuntime"
           Condition="'$(TargetFramework)' == 'net8.0'">
     <ItemGroup>
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\$(NativeCvinferLibraryName)"
                                   Condition="Exists('$(NativeRuntimeDestination)\$(NativeCvinferLibraryName)')" />
-      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll"
-                                  Condition="Exists('$(AlanxinnCudaBackendFile)') and Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer.dll"
                                   Condition="Exists('$(NativeRuntimeDestination)\nvinfer.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
@@ -159,12 +148,6 @@
     <Message Importance="High"
              Text="NuGet native package path: runtimes\win-x64\native\%(AlanxinnNativePackageFiles.Filename)%(AlanxinnNativePackageFiles.Extension)"
              Condition="'@(AlanxinnNativePackageFiles)' != ''" />
-    <Message Importance="High"
-             Text="NuGet CUDA backend: included"
-             Condition="Exists('$(AlanxinnCudaBackendFile)') and Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll')" />
-    <Message Importance="High"
-             Text="NuGet CUDA backend: skipped"
-             Condition="!Exists('$(AlanxinnCudaBackendFile)') or !Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll')" />
   </Target>
 
   <Target Name="ValidateAlanxinnNativeRuntime"
@@ -172,5 +155,6 @@
           Condition="'$(TargetFramework)' == 'net8.0'">
     <Error Text="$(NativeCvinferLibraryName) was not found in '$(NativeRuntimeSource)'. Build the TensorRT C++ runtime before packing the NuGet package."
            Condition="!Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\tools\Assert-PublicNativeRuntime.ps1&quot; -Path &quot;$(NativeRuntimeSource)\$(NativeCvinferLibraryName)&quot;" />
   </Target>
 </Project>

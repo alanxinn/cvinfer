@@ -65,6 +65,8 @@
     <ItemGroup>
       <DenglinNativeRuntimeFiles Include="$(NativeRuntimeSource)\$(NativeCvinferLibraryName)"
                                  Condition="Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
+      <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\alanxinn_cvinfer_denglin_accel.dll"
+                                 Condition="Exists('$(NativeDenglinRuntimeSource)\alanxinn_cvinfer_denglin_accel.dll')" />
       <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\dlnne.dll"
                                  Condition="Exists('$(NativeDenglinRuntimeSource)\dlnne.dll')" />
       <DenglinNativeRuntimeFiles Include="$(NativeDenglinRuntimeSource)\dlnne_plugin.dll"
@@ -99,6 +101,8 @@
          never put cudart or the old unsuffixed API back into the Denglin
          package. Keep the desired *_denglin.dll untouched. -->
     <ItemGroup>
+      <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_denglin_accel.dll"
+                               Condition="!Exists('$(NativeDenglinRuntimeSource)\alanxinn_cvinfer_denglin_accel.dll')" />
       <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer.dll" />
       <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_trt.dll" />
       <DenglinNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_cuda.dll" />

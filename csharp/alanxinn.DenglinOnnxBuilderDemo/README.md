@@ -74,4 +74,4 @@ $env:ALANXINN_DENGLIN_RUNTIME_CACHE = "D:\runtime\denglin"
 百分比会显示为 `?%`，但仍会显示实时下载量。
 由于 Denglin SDK/Python 体积较大且可能受厂商授权限制，主 NuGet 包不包含 C++ builder；
 `tools\Pack-DenglinRuntime.ps1` 用于将授权的 SDK/Python 目录打成 Release ZIP，发布后由
-Builder 按版本和 SHA256 校验自动缓存。
+Builder 按版本和 SHA256 校验自动缓存。SDK 内的 TVM 文件链接由 Builder 恢复为硬链接，避免重复加载 TVM。

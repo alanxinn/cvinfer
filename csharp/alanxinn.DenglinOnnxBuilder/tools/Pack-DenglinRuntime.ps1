@@ -45,6 +45,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $python 'Lib\site-packages\dataclass
 
 $staging = Join-Path ([System.IO.Path]::GetTempPath()) ('denglin-runtime-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $staging | Out-Null
+$script:DenglinSdkFileLinks = [Collections.Generic.List[string]]::new()
 
 function Test-SkippedName([System.IO.FileSystemInfo] $item, [bool] $isPythonRoot) {
     if ($item.Name -in @('__pycache__', '.git', '.vs', 'obj', 'build', 'tests', 'test', 'samples')) { return $true }
@@ -63,13 +64,30 @@ function Test-SkippedName([System.IO.FileSystemInfo] $item, [bool] $isPythonRoot
     return $false
 }
 
-function Copy-FilteredTree([string] $source, [string] $destination, [bool] $isPythonRoot = $false) {
+function Copy-FilteredTree([string] $source, [string] $destination,
+    [string] $archiveRoot, [bool] $isPythonRoot = $false) {
     New-Item -ItemType Directory -Force -Path $destination | Out-Null
     foreach ($item in Get-ChildItem -LiteralPath $source -Force) {
         if (Test-SkippedName $item $isPythonRoot) { continue }
         $target = Join-Path $destination $item.Name
         if ($item.PSIsContainer) {
-            Copy-FilteredTree $item.FullName $target $isPythonRoot
+            Copy-FilteredTree $item.FullName $target $archiveRoot $isPythonRoot
+        } elseif ($archiveRoot -eq 'sdk' -and $item.LinkType -eq 'SymbolicLink') {
+            $sdkPrefix = $sdk.TrimEnd('\') + '\'
+            $linkTarget = [string]$item.Target
+            $resolvedTarget = if ([IO.Path]::IsPathRooted($linkTarget)) {
+                [IO.Path]::GetFullPath($linkTarget)
+            } else {
+                [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $item.FullName) $linkTarget))
+            }
+            if (-not $resolvedTarget.StartsWith($sdkPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Denglin SDK symlink target is outside the SDK root: $($item.FullName) -> $resolvedTarget"
+            }
+
+            $relativeLink = $item.FullName.Substring($sdkPrefix.Length).Replace('\', '/')
+            $relativeTarget = $resolvedTarget.Substring($sdkPrefix.Length).Replace('\', '/')
+            $script:DenglinSdkFileLinks.Add("$relativeLink|$relativeTarget")
+            Write-Host "Recording SDK hard link: $relativeLink -> $relativeTarget"
         } else {
             Copy-Item -LiteralPath $item.FullName -Destination $target -Force
         }
@@ -77,11 +95,15 @@ function Copy-FilteredTree([string] $source, [string] $destination, [bool] $isPy
 }
 
 try {
-    Copy-FilteredTree $sdk (Join-Path $staging 'sdk') $false
-    Copy-FilteredTree $python (Join-Path $staging 'python') $true
+    Copy-FilteredTree $sdk (Join-Path $staging 'sdk') 'sdk' $false
+    Copy-FilteredTree $python (Join-Path $staging 'python') 'python' $true
+    if ($script:DenglinSdkFileLinks.Count -gt 0) {
+        $linkManifest = Join-Path $staging 'sdk\denglin-file-links.txt'
+        $script:DenglinSdkFileLinks | Set-Content -LiteralPath $linkManifest -Encoding UTF8
+    }
     if ($NativeDirectory) {
         $native = (Resolve-Path -LiteralPath $NativeDirectory).Path
-        Copy-FilteredTree $native (Join-Path $staging 'native')
+        Copy-FilteredTree $native (Join-Path $staging 'native') 'native'
     }
 
     $manifest = [ordered]@{

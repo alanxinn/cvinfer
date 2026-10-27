@@ -1,5 +1,8 @@
 #include "yolo/yolo.h"
 #include "yolo/yolo_cuda.h"
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+#include "denglin_accel/pose.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -12,7 +15,11 @@ namespace cvinfer::yolo {
 namespace {
 void require_cuda_backend() {
     if (!cuda_backend_available()) {
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+        throw std::runtime_error("Denglin accelerator DLL alanxinn_cvinfer_denglin_accel.dll was not found");
+#else
         throw std::runtime_error("CUDA backend DLL alanxinn_cvinfer_cuda.dll was not found");
+#endif
     }
 }
 
@@ -547,6 +554,9 @@ std::vector<Pose> decode_poses(const core::Tensor& tensor, const Config& cfg, in
 Detector::Detector(const std::string& path, Config config)
     : session_(core::create_inference_session(path, make_session_options(config))),
       config_(std::move(config)) {
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    if (cuda_backend_available() && config_.preprocess_backend == ComputeBackend::Auto) config_.preprocess_backend = ComputeBackend::Cuda;
+#endif
     const auto names = session_->input_names();
     if (!names.empty()) {
         if (config_.input_name.empty()) config_.input_name = names.front();
@@ -561,6 +571,15 @@ Detector::Detector(const std::string& path, Config config)
         const auto outputs = session_->output_names();
         if (!outputs.empty()) config_.output_name = outputs.front();
     }
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    // Preserve the CPU Auto path for end-to-end exports unsupported by the existing GPU decoder.
+    const auto output_shape = session_->tensor_shape(config_.output_name);
+    const bool end2end = output_shape.size() >= 2 &&
+        (std::min)(output_shape[output_shape.size()-2],output_shape.back()) == 6 &&
+        (std::max)(output_shape[output_shape.size()-2],output_shape.back()) <= 1000;
+    if (!end2end && cuda_backend_available() && config_.postprocess_backend == ComputeBackend::Auto)
+        config_.postprocess_backend = ComputeBackend::Cuda;
+#endif
 }
 std::vector<Detection> Detector::infer_image(const std::uint8_t* data, int width, int height, int channels) {
     const bool measure_timing = config_.enable_timing;
@@ -679,6 +698,9 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
 Segmentor::Segmentor(const std::string& path, Config config)
     : session_(core::create_inference_session(path, make_session_options(config, true))),
       config_(std::move(config)) {
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    if (cuda_backend_available() && config_.preprocess_backend == ComputeBackend::Auto) config_.preprocess_backend = ComputeBackend::Cuda;
+#endif
     output_names_ = session_->output_names();
     const auto names = session_->input_names();
     if (!names.empty()) {
@@ -690,6 +712,21 @@ Segmentor::Segmentor(const std::string& path, Config config)
             config_.input_width = static_cast<int>(shape[3]);
         }
     }
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    // Preserve the CPU Auto path for end-to-end exports unsupported by the existing GPU decoder.
+    std::int64_t attrs = 0, mask_channels = 0, count = 0;
+    for (const auto& name : output_names_) {
+        const auto shape = session_->tensor_shape(name);
+        if (shape.size() == 4) mask_channels = shape[1];
+        else if (shape.size() >= 2) {
+            attrs = (std::min)(shape[shape.size()-2],shape.back());
+            count = (std::max)(shape[shape.size()-2],shape.back());
+        }
+    }
+    const bool end2end = mask_channels > 0 && attrs == 6 + mask_channels && count <= 1000;
+    if (!end2end && cuda_backend_available() && config_.postprocess_backend == ComputeBackend::Auto)
+        config_.postprocess_backend = ComputeBackend::Cuda;
+#endif
 }
 std::vector<Segmentation> Segmentor::infer_image(const std::uint8_t* data, int width, int height, int channels) {
     const bool measure_timing = config_.enable_timing;
@@ -823,6 +860,10 @@ std::vector<Segmentation> Segmentor::infer_device(const void* device_data, std::
 PoseEstimator::PoseEstimator(const std::string& path, Config config)
     : session_(core::create_inference_session(path, make_session_options(config))),
       config_(std::move(config)) {
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    if (cuda_backend_available() && config_.preprocess_backend == ComputeBackend::Auto) config_.preprocess_backend = ComputeBackend::Cuda;
+    if (cuda_backend_available() && config_.postprocess_backend == ComputeBackend::Auto) config_.postprocess_backend = ComputeBackend::Cuda;
+#endif
     const auto names = session_->input_names();
     if (!names.empty()) {
         if (config_.input_name.empty()) config_.input_name = names.front();
@@ -870,11 +911,15 @@ std::vector<Pose> PoseEstimator::infer(const std::vector<float>& chw, int image_
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (chw.empty()) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda)
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+        require_cuda_backend();
+#else
         throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
+#endif
     const std::string& input_name = config_.input_name;
     if (input_name.empty()) throw std::runtime_error("Inference session has no input tensor");
     session_->set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
-    session_->set_output_host_copy(true);
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
     session_->set_input(input_name, chw.data(), chw.size() * sizeof(float));
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_->infer();
@@ -882,7 +927,15 @@ std::vector<Pose> PoseEstimator::infer(const std::vector<float>& chw, int image_
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const std::string& output_name = config_.output_name;
     if (output_name.empty()) throw std::runtime_error("Inference session has no output tensor");
-    auto result = decode_poses(session_->get_output_ref(output_name), config_, image_width, image_height);
+    std::vector<Pose> result;
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    if (config_.postprocess_backend == ComputeBackend::Cuda)
+        result = cuda_backend::decode_poses_device(session_->device_output(output_name),
+            session_->device_output_shape(output_name), session_->device_output_type(output_name),
+            config_, image_width, image_height, session_->cuda_stream());
+    else
+#endif
+        result = decode_poses(session_->get_output_ref(output_name), config_, image_width, image_height);
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
         timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;
@@ -894,11 +947,15 @@ std::vector<Pose> PoseEstimator::infer_device(const void* device_data, std::size
     if (measure_timing) timing_.preprocess_ms = 0.0;
     if (!device_data || bytes == 0) return {};
     if (config_.postprocess_backend == ComputeBackend::Cuda)
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+        require_cuda_backend();
+#else
         throw std::runtime_error("YOLO11/YOLO26 pose CUDA postprocessing is not available; use --postprocess cpu or auto");
+#endif
     const std::string& input_name = config_.input_name;
     if (input_name.empty()) throw std::runtime_error("Inference session has no input tensor");
     session_->set_shape(input_name, {1, 3, config_.input_height, config_.input_width});
-    session_->set_output_host_copy(true);
+    session_->set_output_host_copy(config_.postprocess_backend != ComputeBackend::Cuda);
     session_->set_input_device(input_name, device_data, bytes);
     const auto inference_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     session_->infer();
@@ -906,7 +963,15 @@ std::vector<Pose> PoseEstimator::infer_device(const void* device_data, std::size
     const auto postprocess_start = measure_timing ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const std::string& output_name = config_.output_name;
     if (output_name.empty()) throw std::runtime_error("Inference session has no output tensor");
-    auto result = decode_poses(session_->get_output_ref(output_name), config_, image_width, image_height);
+    std::vector<Pose> result;
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    if (config_.postprocess_backend == ComputeBackend::Cuda)
+        result = cuda_backend::decode_poses_device(session_->device_output(output_name),
+            session_->device_output_shape(output_name), session_->device_output_type(output_name),
+            config_, image_width, image_height, session_->cuda_stream());
+    else
+#endif
+        result = decode_poses(session_->get_output_ref(output_name), config_, image_width, image_height);
     if (measure_timing) {
         timing_.postprocess_ms = elapsed_ms(postprocess_start, std::chrono::steady_clock::now());
         timing_.total_ms = timing_.inference_ms + timing_.postprocess_ms;

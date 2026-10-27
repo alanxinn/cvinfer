@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -97,6 +98,7 @@ public static class DenglinRuntime
             if (layout == null)
                 throw MissingRuntime("the downloaded archive did not contain a valid sdk/ and python/ layout");
 
+            RestoreSdkFileLinks(layout.SdkRoot);
             var root = ResolveSdkRoot(layout.SdkRoot);
             var python = ResolvePythonDirectory(layout.PythonDirectory);
             var nativeDirectory = Directory.Exists(Path.Combine(layout.Root, "native"))
@@ -518,13 +520,120 @@ public static class DenglinRuntime
             CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
     }
 
+    private static void RestoreSdkFileLinks(string sdkRoot)
+    {
+        var root = Path.GetFullPath(sdkRoot);
+        var manifest = Path.Combine(root, "denglin-file-links.txt");
+        if (!File.Exists(manifest)) return;
+
+        foreach (var line in File.ReadAllLines(manifest))
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var parts = line.Split('|');
+            if (parts.Length != 2)
+                throw new InvalidDataException("Invalid Denglin SDK file-link entry: " + line);
+
+            var link = ResolveSdkRelativePath(root, parts[0]);
+            var target = ResolveSdkRelativePath(root, parts[1]);
+            if (!File.Exists(target))
+                throw new FileNotFoundException("Denglin SDK hard-link target is missing", target);
+            if (File.Exists(link) && AreSameFile(link, target)) continue;
+
+            if (File.Exists(link)) File.Delete(link);
+            if (!CreateHardLinkW(link, target, IntPtr.Zero))
+            {
+                var error = new Win32Exception(Marshal.GetLastWin32Error());
+                throw new InvalidOperationException(
+                    "Unable to restore Denglin SDK file link '" + parts[0] + "' -> '" + parts[1] + "'. " +
+                    "The runtime cache must be writable and support same-volume hard links.", error);
+            }
+        }
+    }
+
+    private static string ResolveSdkRelativePath(string root, string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath))
+            throw new InvalidDataException("Denglin SDK link paths must be relative.");
+        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+            Path.DirectorySeparatorChar;
+        var path = Path.GetFullPath(Path.Combine(root,
+            relativePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar)));
+        if (!path.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Denglin SDK file link escapes its SDK directory: " + relativePath);
+        return path;
+    }
+
+    private static bool AreSameFile(string firstPath, string secondPath)
+    {
+        var first = CreateFileW(firstPath, 0, FileShareRead | FileShareWrite | FileShareDelete,
+            IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
+        if (first == InvalidHandleValue) return false;
+        var second = CreateFileW(secondPath, 0, FileShareRead | FileShareWrite | FileShareDelete,
+            IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
+        if (second == InvalidHandleValue)
+        {
+            CloseHandle(first);
+            return false;
+        }
+
+        try
+        {
+            if (!GetFileInformationByHandle(first, out var firstInfo) ||
+                !GetFileInformationByHandle(second, out var secondInfo)) return false;
+            return firstInfo.VolumeSerialNumber == secondInfo.VolumeSerialNumber &&
+                firstInfo.FileIndexHigh == secondInfo.FileIndexHigh &&
+                firstInfo.FileIndexLow == secondInfo.FileIndexLow;
+        }
+        finally
+        {
+            CloseHandle(first);
+            CloseHandle(second);
+        }
+    }
+
+    private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint FileShareDelete = 0x00000004;
+    private const uint OpenExisting = 3;
+    private static readonly IntPtr InvalidHandleValue = new IntPtr(-1);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateHardLinkW(string fileName, string existingFileName,
+        IntPtr securityAttributes);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CreateFileW(string fileName, uint desiredAccess, uint shareMode,
+        IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandle(IntPtr file, out ByHandleFileInformation information);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr handle);
+
     private static void AddCandidate(ICollection<string> values, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value) && !values.Contains(value, StringComparer.OrdinalIgnoreCase))
             values.Add(Path.GetFullPath(value));
     }
 
-    private static void PrependPath(params string[] directories) => SetEnvironmentPath("PATH", directories);
+    private static void PrependPath(params string?[] directories) => SetEnvironmentPath("PATH",
+        directories.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!));
 
     private static void SetEnvironmentPath(string variable, IEnumerable<string> directories)
     {

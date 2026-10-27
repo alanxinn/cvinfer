@@ -14,7 +14,11 @@ bool cuda_backend_available() noexcept {
     return false;
 #else
 #if defined(_WIN32)
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    constexpr const wchar_t* kLibraryName = L"alanxinn_cvinfer_denglin_accel.dll";
+#else
     constexpr const wchar_t* kLibraryName = L"alanxinn_cvinfer_cuda.dll";
+#endif
     if (GetModuleHandleW(kLibraryName)) return true;
 
     // When alanxinn_cvinfer_trt.dll is loaded from a NuGet native asset directory,
@@ -46,7 +50,12 @@ bool cuda_backend_available() noexcept {
                 // sibling bintrt directory. NuGet deployments keep it beside
                 // alanxinn_cvinfer_trt.dll, which was attempted above.
                 sibling_path.resize(separator + 1);
-                sibling_path += L"bintrt\\";
+                sibling_path +=
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+                    L"../bindl\\";
+#else
+                    L"bintrt\\";
+#endif
                 sibling_path += kLibraryName;
                 if (LoadLibraryW(sibling_path.c_str()) != nullptr) return true;
             }

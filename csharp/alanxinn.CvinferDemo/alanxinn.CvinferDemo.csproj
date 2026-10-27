@@ -11,6 +11,7 @@
     <!-- Keep the RID for NuGet runtime asset selection, but use the standard
          bin\<Configuration>\net8.0-windows output directory. -->
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <UseLocalDenglinProject Condition="'$(UseLocalDenglinProject)' == ''">false</UseLocalDenglinProject>
     <CvinferSharpPackageId Condition="'$(CvinferSharpPackageId)' == ''">alanxinn.CvinferSharp</CvinferSharpPackageId>
     <CvinferSharpPackageVersion Condition="'$(CvinferSharpPackageVersion)' == ''">0.1.4</CvinferSharpPackageVersion>
     <CvinferSharpDenglinPackageId Condition="'$(CvinferSharpDenglinPackageId)' == ''">alanxinn.CvinferSharp.Denglin</CvinferSharpDenglinPackageId>
@@ -18,8 +19,12 @@
     <RestoreAdditionalProjectSources>$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\TensorRT\Release;$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\Denglin</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="$(CvinferSharpPackageId)" Version="$(CvinferSharpPackageVersion)" />
-    <PackageReference Include="$(CvinferSharpDenglinPackageId)" Version="$(CvinferSharpDenglinPackageVersion)" />
+    <PackageReference Include="$(CvinferSharpPackageId)" Version="$(CvinferSharpPackageVersion)"
+                      Condition="'$(UseLocalDenglinProject)' != 'true'" />
+    <PackageReference Include="$(CvinferSharpDenglinPackageId)" Version="$(CvinferSharpDenglinPackageVersion)"
+                      Condition="'$(UseLocalDenglinProject)' != 'true'" />
+    <ProjectReference Include="..\alanxinn.CvinferSharp\alanxinn.CvinferSharp.Denglin.csproj"
+                      Condition="'$(UseLocalDenglinProject)' == 'true'" />
     <PackageReference Include="OpenCvSharp4.Windows" Version="4.13.0.20260627" />
   </ItemGroup>
 </Project>

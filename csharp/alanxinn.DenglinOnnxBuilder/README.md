@@ -73,6 +73,8 @@ ALANXINN_DENGLIN_ALLOW_LOCAL_RUNTIME=1  开发时允许使用本地 SDK/Python
 SDK/Python 由于体积和授权原因不默认放进主 NuGet 包。使用
 `tools\Pack-DenglinRuntime.ps1` 可以从已授权安装目录创建
 `alanxinn-denglin-runtime-win-x64-<version>.zip`，再上传到 Release 或内部镜像。
+打包时 SDK 的文件符号链接会写入链接清单；Builder 解压后会在版本缓存中将别名恢复为同卷硬链接，
+避免 Windows 将同一个 TVM 核心按不同 DLL 名称加载两次。
 
 ```powershell
 .\tools\Pack-DenglinRuntime.ps1 `

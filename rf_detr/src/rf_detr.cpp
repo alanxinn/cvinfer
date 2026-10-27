@@ -37,7 +37,11 @@ bool cuda_backend_available() noexcept {
     return false;
 #else
 #if defined(_WIN32)
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    constexpr const wchar_t* library_name = L"alanxinn_cvinfer_denglin_accel.dll";
+#else
     constexpr const wchar_t* library_name = L"alanxinn_cvinfer_cuda.dll";
+#endif
     if (GetModuleHandleW(library_name)) return true;
 
     // The public DLL and the optional CUDA backend are deployed together in
@@ -64,7 +68,12 @@ bool cuda_backend_available() noexcept {
                 if (LoadLibraryW(sibling_path.c_str()) != nullptr) return true;
 
                 sibling_path.resize(separator + 1);
-                sibling_path += L"bintrt\\";
+                sibling_path +=
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+                    L"../bindl\\";
+#else
+                    L"bintrt\\";
+#endif
                 sibling_path += library_name;
                 if (LoadLibraryW(sibling_path.c_str()) != nullptr) return true;
             }
@@ -80,7 +89,11 @@ bool cuda_backend_available() noexcept {
 
 void require_cuda_backend() {
     if (!cuda_backend_available()) {
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+        throw std::runtime_error("Denglin accelerator DLL alanxinn_cvinfer_denglin_accel.dll was not found");
+#else
         throw std::runtime_error("CUDA backend DLL alanxinn_cvinfer_cuda.dll was not found");
+#endif
     }
 }
 
@@ -211,37 +224,63 @@ std::vector<float> preprocess_bgr(const std::uint8_t* data, int width, int heigh
     constexpr float mean[] = {0.485F, 0.456F, 0.406F};
     constexpr float stddev[] = {0.229F, 0.224F, 0.225F};
     std::vector<float> result(plane * 3, 0.0F);
-    // RF-DETR's image transform uses antialiased/bilinear resizing.  Nearest
-    // neighbour sampling noticeably changes the transformer features and can
-    // drive all classification logits below the confidence threshold.
-    for (int y = 0; y < resized_h; ++y) {
-        const float source_y = (std::max)(0.0F, (std::min)(static_cast<float>(height - 1),
-            ((static_cast<float>(y) + 0.5F) * height / resized_h) - 0.5F));
-        const int y0 = static_cast<int>(std::floor(source_y));
-        const int y1 = (std::min)(height - 1, y0 + 1);
-        const float wy = source_y - std::floor(source_y);
-        for (int x = 0; x < resized_w; ++x) {
-            const float source_x = (std::max)(0.0F, (std::min)(static_cast<float>(width - 1),
-                ((static_cast<float>(x) + 0.5F) * width / resized_w) - 0.5F));
-            const int x0 = static_cast<int>(std::floor(source_x));
-            const int x1 = (std::min)(width - 1, x0 + 1);
-            const float wx = source_x - std::floor(source_x);
-            const int dx = config.letterbox ? static_cast<int>(x + pad_x) : x;
-            const int dy = config.letterbox ? static_cast<int>(y + pad_y) : y;
-            if (dx < 0 || dx >= target_w || dy < 0 || dy >= target_h) continue;
-            const auto* p00 = data + (static_cast<std::size_t>(y0) * width + x0) * channels;
-            const auto* p01 = data + (static_cast<std::size_t>(y0) * width + x1) * channels;
-            const auto* p10 = data + (static_cast<std::size_t>(y1) * width + x0) * channels;
-            const auto* p11 = data + (static_cast<std::size_t>(y1) * width + x1) * channels;
-            const float bgr[] = {
-                (1.0F - wy) * ((1.0F - wx) * p00[0] + wx * p01[0]) + wy * ((1.0F - wx) * p10[0] + wx * p11[0]),
-                (1.0F - wy) * ((1.0F - wx) * p00[1] + wx * p01[1]) + wy * ((1.0F - wx) * p10[1] + wx * p11[1]),
-                (1.0F - wy) * ((1.0F - wx) * p00[2] + wx * p01[2]) + wy * ((1.0F - wx) * p10[2] + wx * p11[2])
-            };
-            const float rgb[] = {bgr[2] / 255.0F, bgr[1] / 255.0F, bgr[0] / 255.0F};
-            for (int c = 0; c < 3; ++c) result[static_cast<std::size_t>(c) * plane + static_cast<std::size_t>(dy) * target_w + dx] = (rgb[c] - mean[c]) / stddev[c];
+    struct Weights {
+        int begin{};
+        std::vector<float> values;
+    };
+    const auto make_weights = [](int source, int target) {
+        std::vector<Weights> table(static_cast<std::size_t>(target));
+        const float ratio = static_cast<float>(source) / target;
+        const float radius = (std::max)(1.0F, ratio);
+        for (int i = 0; i < target; ++i) {
+            const float center = (i + 0.5F) * ratio - 0.5F;
+            const int lo = (std::max)(0, static_cast<int>(std::ceil(center - radius)));
+            const int hi = (std::min)(source - 1, static_cast<int>(std::floor(center + radius)));
+            auto& entry = table[static_cast<std::size_t>(i)];
+            entry.begin = lo;
+            float total = 0;
+            for (int at = lo; at <= hi; ++at) {
+                float w = (std::max)(0.0F, 1.0F - std::fabs(at - center) / radius);
+                entry.values.push_back(w);
+                total += w;
+            }
+            for (auto& w : entry.values)
+                w /= total;
         }
-    }
+        return table;
+    };
+    const auto xs = make_weights(width, resized_w), ys = make_weights(height, resized_h);
+    const std::size_t horizontal_plane = static_cast<std::size_t>(height) * resized_w;
+    std::vector<float> horizontal(horizontal_plane * 3);
+    for (int sy = 0; sy < height; ++sy)
+        for (int x = 0; x < resized_w; ++x) {
+            const auto& filter = xs[static_cast<std::size_t>(x)];
+            for (int c = 0; c < 3; ++c) {
+                float value = 0;
+                for (std::size_t k = 0; k < filter.values.size(); ++k) {
+                    const auto pixel =
+                        data[(static_cast<std::size_t>(sy) * width + filter.begin + k) * channels + (2 - c)];
+                    value += filter.values[k] * (pixel / 255.0F - mean[c]) / stddev[c];
+                }
+                horizontal[static_cast<std::size_t>(c) * horizontal_plane +
+                           static_cast<std::size_t>(sy) * resized_w + x] = value;
+            }
+        }
+    for (int y = 0; y < resized_h; ++y)
+        for (int x = 0; x < resized_w; ++x) {
+            const auto& filter = ys[static_cast<std::size_t>(y)];
+            const int dx = static_cast<int>(x + pad_x), dy = static_cast<int>(y + pad_y);
+            if (dx < 0 || dx >= target_w || dy < 0 || dy >= target_h)
+                continue;
+            for (int c = 0; c < 3; ++c) {
+                float value = 0;
+                for (std::size_t k = 0; k < filter.values.size(); ++k)
+                    value += filter.values[k] * horizontal[static_cast<std::size_t>(c) * horizontal_plane +
+                                                           (filter.begin + k) * resized_w + x];
+                result[static_cast<std::size_t>(c) * plane + static_cast<std::size_t>(dy) * target_w + dx] =
+                    value;
+            }
+        }
     return result;
 }
 
@@ -254,14 +293,12 @@ std::vector<Detection> decode_detections(const core::Tensor& boxes_tensor, const
     const auto score_layout = infer_layout(logits_tensor, config.class_count);
     if (box_layout.count <= 0 || box_layout.channels < 4 || score_layout.count <= 0 || score_layout.channels <= 0) return {};
     const int count = (std::min)(box_layout.count, score_layout.count);
-    // RF-DETR checkpoints trained on COCO expose 91 logits: 90 categories plus
-    // the final no-object channel.  The generic C API historically defaults to
-    // 80 classes for YOLO11/YOLO26, so infer the RF-DETR category count from the output
-    // shape instead of silently dropping valid COCO categories.
+    // RF-DETR COCO logits use sparse category IDs 0..90. Channel 90 is
+    // toothbrush. Preserve the sparse COCO category range even when a caller
+    // supplies the generic 80-class YOLO default.
     int classes = score_layout.channels;
     if (config.class_count > 0 && config.class_count < classes && score_layout.channels != 91)
         classes = config.class_count;
-    if (score_layout.channels == 91) classes = 90;
     const float sx = config.letterbox ? (std::min)(static_cast<float>(config.input_width) / image_width, static_cast<float>(config.input_height) / image_height) : static_cast<float>(config.input_width) / image_width;
     const float sy = config.letterbox ? sx : static_cast<float>(config.input_height) / image_height;
     const float pad_x = config.letterbox ? (config.input_width - image_width * sx) * 0.5F : 0.0F;
@@ -343,8 +380,7 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     if (mask_layout.queries <= 0) return {};
 
     int classes = label_layout.channels;
-    if (classes == 91) classes = 90;
-    else if (config.class_count > 0) classes = (std::min)(classes, config.class_count);
+    if (config.class_count > 0 && label_layout.channels != 91) classes = (std::min)(classes, config.class_count);
     if (classes <= 0) return {};
 
     const float sx = config.letterbox
@@ -364,16 +400,6 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
     std::vector<Candidate> candidates;
     candidates.reserve(static_cast<std::size_t>(query_count));
     for (int query = 0; query < query_count; ++query) {
-        int class_id = 0;
-        float score = sigmoid(at(labels, label_layout, query, 0));
-        for (int c = 1; c < classes; ++c) {
-            const float candidate_score = sigmoid(at(labels, label_layout, query, c));
-            if (candidate_score > score) {
-                score = candidate_score;
-                class_id = c;
-            }
-        }
-        if (score < config.confidence_threshold) continue;
         float cx = at(boxes, box_layout, query, 0);
         float cy = at(boxes, box_layout, query, 1);
         float w = at(boxes, box_layout, query, 2);
@@ -393,21 +419,28 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
             (std::max)(0.0F, x1), (std::max)(0.0F, y1),
             (std::min)(static_cast<float>(image_width), x2),
             (std::min)(static_cast<float>(image_height), y2),
-            score, class_id
+            0.0F, 0
         };
         if (box.x2 <= box.x1 || box.y2 <= box.y1) continue;
-        candidates.push_back({box, query});
+        // Match official RF-DETR: rank all query/class pairs globally.
+        for (int class_id = 0; class_id < classes; ++class_id) {
+            const float score = sigmoid(at(labels, label_layout, query, class_id));
+            if (score < config.confidence_threshold)
+                continue;
+            box.score = score;
+            box.class_id = class_id;
+            candidates.push_back({box, query});
+        }
     }
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
-        return a.box.score > b.box.score;
-    });
+    std::sort(candidates.begin(), candidates.end(),
+              [](const Candidate& a, const Candidate& b) { return a.box.score > b.box.score; });
     if (candidates.size() > 100) candidates.resize(100);
 
     auto sample_mask = [&](int query, float source_x, float source_y) {
         const float model_x = source_x * sx + pad_x;
         const float model_y = source_y * sy + pad_y;
-        const float gx = (model_x + 0.5F) * mask_layout.width / config.input_width - 0.5F;
-        const float gy = (model_y + 0.5F) * mask_layout.height / config.input_height - 0.5F;
+        const float gx = model_x * mask_layout.width / config.input_width - 0.5F;
+        const float gy = model_y * mask_layout.height / config.input_height - 0.5F;
         const float clamped_x = (std::max)(0.0F, (std::min)(static_cast<float>(mask_layout.width - 1), gx));
         const float clamped_y = (std::max)(0.0F, (std::min)(static_cast<float>(mask_layout.height - 1), gy));
         const int x0 = static_cast<int>(std::floor(clamped_x));
@@ -451,6 +484,10 @@ std::vector<Segmentation> decode_segmentations(const std::vector<core::Tensor>& 
 Detector::Detector(const std::string& path, Config config)
     : session_(core::create_inference_session(path, make_session_options(config))),
       config_(std::move(config)) {
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    if (cuda_backend_available() && config_.preprocess_backend == ComputeBackend::Auto) config_.preprocess_backend = ComputeBackend::Cuda;
+    if (cuda_backend_available() && config_.postprocess_backend == ComputeBackend::Auto) config_.postprocess_backend = ComputeBackend::Cuda;
+#endif
     const auto inputs = session_->input_names();
     if (!inputs.empty()) {
         if (config_.input_name.empty()) config_.input_name = inputs.front();
@@ -612,6 +649,10 @@ std::vector<Detection> Detector::infer_device(const void* device_data, std::size
 Segmentor::Segmentor(const std::string& path, Config config)
     : session_(core::create_inference_session(path, make_session_options(config))),
       config_(std::move(config)) {
+#if defined(CVINFER_HAS_DENGLIN_ACCEL)
+    if (cuda_backend_available() && config_.preprocess_backend == ComputeBackend::Auto) config_.preprocess_backend = ComputeBackend::Cuda;
+    if (cuda_backend_available() && config_.postprocess_backend == ComputeBackend::Auto) config_.postprocess_backend = ComputeBackend::Cuda;
+#endif
     const auto inputs = session_->input_names();
     if (!inputs.empty()) {
         if (config_.input_name.empty()) config_.input_name = inputs.front();

@@ -28,6 +28,12 @@ YOLO/RF-DETR 不直接依赖本目录的具体类，而是通过
 `core::create_inference_session()` 和 `Config::inference_backend` 选择
 Denglin；C ABI/C# 的 `Denglin` 选项也沿用这条链路。
 
+可选 GPU 前后处理项目位于 `cvinfer_private/denglin_backend`，通过
+`BUILD_DENGLIN_ACCELERATOR=ON` 启用，生成独立的
+`alanxinn_cvinfer_denglin_accel.dll`，使用登临 `curt` 运行时。
+它支持 YOLO 检测/分割/姿态与 RF-DETR 检测/分割，并通过 session 的
+Device 输入输出直接连接推理。该目录的 `Build-And-Test.ps1` 可自动构建和验证。
+
 核心接口：
 
 ```text

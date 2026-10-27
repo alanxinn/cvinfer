@@ -11,6 +11,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(BUILD_CUDA_BACKEND
   "Build the optional CUDA preprocessing/postprocessing backend"
   OFF)
+option(BUILD_DENGLIN_ACCELERATOR "Build Denglin GPU preprocessing/postprocessing" OFF)
+set(ALANXINN_DENGLIN_ACCELERATOR_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/cvinfer_private/denglin_backend"
+  CACHE PATH "Private Denglin accelerator source directory")
+
 option(BUILD_DENGLIN_BACKEND
   "Build the optional Denglin inference backend"
   OFF)
@@ -338,6 +343,13 @@ if(BUILD_CUDA_BACKEND)
   endif()
   add_subdirectory("${ALANXINN_CUDA_BACKEND_DIR}"
                    "${CMAKE_BINARY_DIR}/cuda_backend")
+endif()
+if(BUILD_DENGLIN_ACCELERATOR)
+  enable_testing()
+  if(NOT BUILD_DENGLIN_BACKEND)
+    message(FATAL_ERROR "BUILD_DENGLIN_ACCELERATOR requires BUILD_DENGLIN_BACKEND=ON")
+  endif()
+  add_subdirectory("${ALANXINN_DENGLIN_ACCELERATOR_DIR}" "${CMAKE_BINARY_DIR}/denglin_accelerator")
 endif()
 add_subdirectory(yolo)
 add_subdirectory(rf_detr)

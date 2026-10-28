@@ -35,6 +35,9 @@ alanxinn.CvinferDemo.exe `
 yolo11-det
 yolo11-seg
 yolo11-pose
+yolo26-det
+yolo26-seg
+yolo26-pose
 rf-detr-det
 rf-detr-seg
 ```
@@ -47,8 +50,8 @@ rf-detr-seg
 --output PATH
 --classes N                 可选；默认按 engine 输出自动推断
 --backend tensorrt|denglin  推理引擎后端（Denglin 需启用 native backend）
---preprocess auto|cpu
---postprocess auto|cpu
+--preprocess auto|cpu|cuda
+--postprocess auto|cpu|cuda
 --warmup N
 --iterations N
 --timing                    可选；开启预处理、推理和后处理计时
@@ -134,3 +137,6 @@ ONNX 转换见：
 
 - [alanxinn.TensorRtOnnxBuilder](alanxinn.TensorRtOnnxBuilder/README.md)
 - [转换 Demo](alanxinn.TensorRtOnnxBuilderDemo/README.md)
+
+SAM3 使用独立的 `Sam3Segmentor`，参见 [SAM3 接口与验证范围](../sam3/README.md)。
+本分支 Demo 默认引用本地 TRT10 项目。

@@ -69,6 +69,8 @@ sam3_dinov3_onnx_tensorrt_analysis.md
 
 
 cache/
+__pycache__/
+*.pyc
 
 dl-docs-win-v2-20260731/
 csharp/alanxinn.DenglinOnnxBuilder/bin/

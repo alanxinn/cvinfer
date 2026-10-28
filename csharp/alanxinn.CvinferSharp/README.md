@@ -4,7 +4,8 @@
 
 提供：
 
-- YOLO11/RF-DETR 检测、分割和 Pose；
+- YOLO11/YOLO26 检测、分割和 Pose，RF-DETR 检测与分割；
+- SAM3 框/正负点/文本接口，真实权重验证状态见 `sam3/README.md`；
 - BGR 图像推理；
 - 检测框、Mask、耗时读取；
 - TensorRT/Denglin 推理后端选择；
@@ -12,8 +13,10 @@
 
 ## 安装
 
+本分支本地版本为 `0.2.0-trt10`，使用项目引用或从源码 pack；已发布的 0.1.x TensorRT 包使用旧 SDK。
+
 ```powershell
-dotnet add package alanxinn.CvinferSharp --version 0.1.4
+dotnet add reference path/to/cvinfer/csharp/alanxinn.CvinferSharp/alanxinn.CvinferSharp.csproj
 ```
 
 只使用 Denglin 后端时安装：
@@ -23,7 +26,7 @@ dotnet add package alanxinn.CvinferSharp.Denglin --version 0.1.4
 ```
 
 需要在同一个应用中按配置切换两个后端时，可以同时引用以上两个包；
-Demo 就采用这种方式。每个包只加载自己对应的 native API DLL。
+本分支 Demo 默认引用本地 TensorRT 项目。每个包只加载自己对应的 native API DLL。
 
 ## 示例
 
@@ -81,13 +84,13 @@ runtimes/win-x64/native/
 
 ```text
 alanxinn_cvinfer_trt.dll
-nvinfer.dll
+nvinfer_10.dll
+nvinfer_plugin_10.dll
 cudart64_*.dll
-zlibwapi.dll
 opencv_world*.dll
 ```
 
-`nvinfer_plugin.dll`、`nvonnxparser.dll`、cuBLAS、cuDNN 等 builder 依赖不在
+`nvonnxparser_10.dll`、TRT builder resource、cuBLAS、cuDNN 等 builder 依赖不在
 该推理包中；它们由 `alanxinn.TensorRtOnnxBuilder` 的 `TensorRtRuntime`
 单独提供。若某个已构建 engine 依赖额外 TensorRT plugin，应用还需自行部署
 对应 plugin DLL。

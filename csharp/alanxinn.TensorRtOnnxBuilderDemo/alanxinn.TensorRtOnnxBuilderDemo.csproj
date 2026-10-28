@@ -8,10 +8,18 @@
     <RootNamespace>alanxinn.TensorRtOnnxBuilderDemo</RootNamespace>
     <AssemblyName>alanxinn.TensorRtOnnxBuilderDemo</AssemblyName>
     <PlatformTarget>x64</PlatformTarget>
+    <UseLocalTensorRtProject Condition="'$(UseLocalTensorRtProject)' == ''">true</UseLocalTensorRtProject>
     <RestoreAdditionalProjectSources Condition="Exists('$(MSBuildProjectDirectory)\..\alanxinn.TensorRtOnnxBuilder\bin\Release')">$(MSBuildProjectDirectory)\..\alanxinn.TensorRtOnnxBuilder\bin\Release</RestoreAdditionalProjectSources>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="alanxinn.TensorRtOnnxBuilder" Version="0.1.3" />
+    <PackageReference Include="alanxinn.TensorRtOnnxBuilder" Version="0.1.3"
+                      Condition="'$(UseLocalTensorRtProject)' != 'true'" />
+    <ProjectReference Include="..\alanxinn.TensorRtOnnxBuilder\alanxinn.TensorRtOnnxBuilder.csproj"
+                      Condition="'$(UseLocalTensorRtProject)' == 'true'" />
   </ItemGroup>
+  <Target Name="CopyLocalTensorRtBuilder" AfterTargets="Build" Condition="'$(UseLocalTensorRtProject)' == 'true'">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\build\trt10-release\tensorrt_builder\alanxinn_tensorrt_builder.dll"
+          DestinationFolder="$(OutDir)" />
+  </Target>
 </Project>

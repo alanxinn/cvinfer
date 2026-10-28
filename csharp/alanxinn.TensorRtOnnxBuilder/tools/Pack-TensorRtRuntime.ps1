@@ -8,14 +8,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $requiredFiles = @(
-    'nvinfer.dll',
-    'nvinfer_plugin.dll',
-    'nvonnxparser.dll',
-    'cudart64_110.dll',
-    'cublas64_11.dll',
-    'cublasLt64_11.dll',
-    'cudnn64_8.dll',
-    'zlibwapi.dll'
+    'nvinfer_10.dll',
+    'nvinfer_plugin_10.dll',
+    'nvonnxparser_10.dll',
+    'nvinfer_builder_resource_ptx_10.dll',
+    'cudart64_12.dll'
 )
 
 $source = (Resolve-Path -LiteralPath $SourceDirectory).Path
@@ -30,6 +27,11 @@ try {
         Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $staging $fileName)
     }
 
+    # Architecture-specific builder resources and cuDNN 9 component DLLs must
+    # travel together. SourceDirectory can be CMake's builder_runtime directory.
+    foreach ($pattern in @('nvinfer_builder_resource*_10.dll', 'cublas*64_12.dll', 'cudnn*64_9.dll', 'nvrtc*.dll')) {
+        Get-ChildItem -LiteralPath $source -Filter $pattern -File | Copy-Item -Destination $staging -Force
+    }
     $outputDirectory = Split-Path -Parent $OutputZip
     if ($outputDirectory) { New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null }
     if (Test-Path -LiteralPath $OutputZip) { Remove-Item -LiteralPath $OutputZip -Force }
@@ -40,5 +42,10 @@ try {
     Write-Host "SHA256: $hash"
 }
 finally {
-    if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+    $resolvedStaging = [IO.Path]::GetFullPath($staging)
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if (-not $resolvedStaging.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove staging directory outside TEMP: $resolvedStaging"
+    }
+    if (Test-Path -LiteralPath $resolvedStaging) { Remove-Item -LiteralPath $resolvedStaging -Recurse -Force }
 }

@@ -39,6 +39,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- SAM3 is a TensorRT-only module; keep it out of the Denglin package. -->
+    <Compile Remove="Sam3Segmentor.cs" />
     <None Remove="README.Denglin.md" />
     <None Remove="alanxinn.CvinferSharp.Denglin.targets" />
     <None Remove="alanxinn.CvinferSharp.targets" />

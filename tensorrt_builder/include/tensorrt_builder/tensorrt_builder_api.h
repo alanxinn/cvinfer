@@ -55,7 +55,7 @@ typedef struct trt_builder_profile {
 
 /*
  * Progress is reported as coarse build stages. TensorRT does not expose a
- * reliable percentage for buildEngineWithConfig(), so that stage reports a
+ * reliable percentage for buildSerializedNetwork(), so that stage reports a
  * fixed percentage plus heartbeat notifications while work is ongoing.
  */
 typedef void (TENSORRT_BUILDER_CALL *trt_builder_progress_callback_t)(

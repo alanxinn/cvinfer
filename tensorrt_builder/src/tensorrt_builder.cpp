@@ -101,7 +101,7 @@ public:
 template <typename T>
 struct TrtDestroyer {
     void operator()(T* object) const noexcept {
-        if (object) object->destroy();
+        delete object;
     }
 };
 
@@ -207,7 +207,7 @@ nvinfer1::Dims to_dims(const std::vector<int64_t>& shape) {
         const auto value = shape[static_cast<std::size_t>(i)];
         if (value <= 0 || value > std::numeric_limits<int>::max())
             throw std::invalid_argument("Tensor shape dimensions are out of range");
-        result.d[i] = static_cast<int>(value);
+        result.d[i] = value;
     }
     return result;
 }
@@ -269,8 +269,8 @@ void configure_profiles(
             }
             if (!known_input) throw std::invalid_argument("Optimization profile contains unknown input: " + shape.first);
         }
-        // TensorRT 8.6 的 IOptimizationProfile 没有 destroy()；其生命周期由
-        // IBuilderConfig 接管，不能套用通用 TrtPtr 删除器。
+        // IBuilder retains ownership of optimization profiles; never delete
+        // this raw pointer or wrap it in TrtPtr.
         auto* optimization_profile = builder.createOptimizationProfile();
         if (!optimization_profile) throw std::runtime_error("TensorRT optimization profile creation failed");
         for (int input_index = 0; input_index < network.getNbInputs(); ++input_index) {
@@ -380,7 +380,7 @@ trt_builder_build_onnx_with_progress(
         TrtPtr<nvinfer1::IBuilder> builder(nvinfer1::createInferBuilder(logger));
         if (!builder) throw std::runtime_error("TensorRT builder creation failed");
         progress.report(3, 20, "TensorRT builder created");
-        const auto network_flags = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+        const uint32_t network_flags = 0; // TensorRT 10 networks always use explicit batch.
         TrtPtr<nvinfer1::INetworkDefinition> network(builder->createNetworkV2(network_flags));
         if (!network) {
             throw std::runtime_error("TensorRT network creation failed");
@@ -403,7 +403,7 @@ trt_builder_build_onnx_with_progress(
             throw std::runtime_error("TensorRT builder config creation failed");
         }
         progress.report(8, 50, "Builder configuration created");
-        builder_config->setMaxWorkspaceSize(static_cast<std::size_t>(config.workspace_mib) * 1024U * 1024U);
+        builder_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, static_cast<std::size_t>(config.workspace_mib) * 1024U * 1024U);
         // TensorRT 8.6 can build this transformer graph with FP16, but the
         // resulting RF-DETR classification logits are numerically corrupted
         // (all scores collapse below the postprocess threshold).  Detect the
@@ -421,23 +421,23 @@ trt_builder_build_onnx_with_progress(
         const bool use_fp16 = config.precision == TRT_BUILDER_PRECISION_FP16 && !is_rf_detr;
         if (use_fp16)
             builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-        else if (config.precision == TRT_BUILDER_PRECISION_INT8)
+        else if (config.precision == TRT_BUILDER_PRECISION_INT8 && !is_rf_detr)
             builder_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         if (config.enable_tf32) builder_config->setFlag(nvinfer1::BuilderFlag::kTF32);
         else builder_config->clearFlag(nvinfer1::BuilderFlag::kTF32);
         if (config.enable_sparse_weights) builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
-        if (config.strict_types) builder_config->setFlag(nvinfer1::BuilderFlag::kSTRICT_TYPES);
+        if (config.strict_types) {
+            builder_config->setFlag(nvinfer1::BuilderFlag::kREJECT_EMPTY_ALGORITHMS);
+            builder_config->setFlag(nvinfer1::BuilderFlag::kDIRECT_IO);
+            builder_config->setFlag(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS);
+        }
         configure_profiles(*builder, *network, *builder_config, profiles, profile_count);
         progress.report(9, 60, "Optimization profiles configured");
         progress.start_heartbeat(10, 65, "Building TensorRT engine");
-        TrtPtr<nvinfer1::ICudaEngine> engine(builder->buildEngineWithConfig(*network, *builder_config));
+        TrtPtr<nvinfer1::IHostMemory> serialized(builder->buildSerializedNetwork(*network, *builder_config));
         progress.stop_heartbeat();
-        if (!engine) {
-            throw std::runtime_error(logger.last_error_.empty() ? "TensorRT engine build failed" : logger.last_error_);
-        }
-        TrtPtr<nvinfer1::IHostMemory> serialized(engine->serialize());
         if (!serialized) {
-            throw std::runtime_error("TensorRT engine serialization failed");
+            throw std::runtime_error(logger.last_error_.empty() ? "TensorRT engine build failed" : logger.last_error_);
         }
         progress.report(11, 92, "Engine serialized");
         write_engine(engine_path, *serialized);

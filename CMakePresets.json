@@ -22,15 +22,20 @@
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_CXX_COMPILER": "cl.exe",
-        "CMAKE_CUDA_COMPILER": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/bin/nvcc.exe",
+        "CMAKE_CUDA_COMPILER": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9/bin/nvcc.exe",
         "CMAKE_CUDA_HOST_COMPILER": "cl.exe",
-        "CUDA_ROOT": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8",
-        "TENSORRT_ROOT": "C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-8.6.1.6_cuda-11.8",
+        "CUDA_ROOT": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9",
+        "TENSORRT_ROOT": "C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-10.16.1.11-cuda-12",
         "OPENCV_ROOT": "E:/opencv/build",
-        "BUILD_DENGLIN_BACKEND": "ON"
+        "BUILD_DENGLIN_BACKEND": "OFF",
+        "CUDNN_ROOT": "C:/Program Files/NVIDIA/CUDNN/v9.27",
+        "BUILD_CVINFER_DLL": "ON",
+        "BUILD_TRT_ONNX_BUILDER_DLL": "ON",
+        "CMAKE_CUDA_ARCHITECTURES": "89",
+        "OpenCV_DIR": "E:/opencv/build/x64/vc16/lib"
       },
       "environment": {
-        "CUDA_PATH": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
+        "CUDA_PATH": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9"
       },
       "condition": {
         "type": "equals",
@@ -69,6 +74,18 @@
         "ALANXINN_CUDA_BACKEND_DIR": "${sourceDir}/private/cuda_backend",
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "trt10-release",
+      "displayName": "TensorRT 10.16 / CUDA 12.9 / cuDNN 9.27 Release",
+      "inherits": "ninja-msvc-release",
+      "binaryDir": "${sourceDir}/build/trt10-release"
+    },
+    {
+      "name": "trt10-cuda-release",
+      "displayName": "TensorRT 10.16 with CUDA preprocessing and postprocessing",
+      "inherits": "ninja-msvc-private-cuda-release",
+      "binaryDir": "${sourceDir}/build/trt10-cuda-release"
     }
   ],
   "buildPresets": [
@@ -86,6 +103,14 @@
       "name": "build-ninja-msvc-private-cuda-release",
       "displayName": "Build Ninja + MSVC + Private CUDA Release",
       "configurePreset": "ninja-msvc-private-cuda-release"
+    },
+    {
+      "name": "build-trt10-release",
+      "configurePreset": "trt10-release"
+    },
+    {
+      "name": "build-trt10-cuda-release",
+      "configurePreset": "trt10-cuda-release"
     }
   ]
 }

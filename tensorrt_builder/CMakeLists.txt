@@ -21,10 +21,11 @@ target_link_directories(alanxinn_tensorrt_builder PRIVATE
   "${TENSORRT_ROOT}/lib")
 
 target_link_libraries(alanxinn_tensorrt_builder PRIVATE
-  nvinfer
-  nvonnxparser
-  nvinfer_plugin
-  cudart)
+  ${CVINFER_NVINFER_LIBRARY}
+  ${CVINFER_ONNXPARSER_LIBRARY}
+  ${CVINFER_PLUGIN_LIBRARY}
+  CUDA::cudart)
+cvinfer_copy_builder_runtime(alanxinn_tensorrt_builder)
 
 if(WIN32)
   # The Builder NuGet package contains only alanxinn_tensorrt_builder.dll;

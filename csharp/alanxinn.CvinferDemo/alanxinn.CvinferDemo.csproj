@@ -12,6 +12,7 @@
          bin\<Configuration>\net8.0-windows output directory. -->
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <UseLocalDenglinProject Condition="'$(UseLocalDenglinProject)' == ''">false</UseLocalDenglinProject>
+    <UseLocalTensorRtProject Condition="'$(UseLocalTensorRtProject)' == '' and '$(UseLocalDenglinProject)' != 'true'">true</UseLocalTensorRtProject>
     <CvinferSharpPackageId Condition="'$(CvinferSharpPackageId)' == ''">alanxinn.CvinferSharp</CvinferSharpPackageId>
     <CvinferSharpPackageVersion Condition="'$(CvinferSharpPackageVersion)' == ''">0.1.4</CvinferSharpPackageVersion>
     <CvinferSharpDenglinPackageId Condition="'$(CvinferSharpDenglinPackageId)' == ''">alanxinn.CvinferSharp.Denglin</CvinferSharpDenglinPackageId>
@@ -20,11 +21,21 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="$(CvinferSharpPackageId)" Version="$(CvinferSharpPackageVersion)"
-                      Condition="'$(UseLocalDenglinProject)' != 'true'" />
+                      Condition="'$(UseLocalDenglinProject)' != 'true' and '$(UseLocalTensorRtProject)' != 'true'" />
     <PackageReference Include="$(CvinferSharpDenglinPackageId)" Version="$(CvinferSharpDenglinPackageVersion)"
-                      Condition="'$(UseLocalDenglinProject)' != 'true'" />
+                      Condition="'$(UseLocalDenglinProject)' != 'true' and '$(UseLocalTensorRtProject)' != 'true'" />
+    <ProjectReference Include="..\alanxinn.CvinferSharp\alanxinn.CvinferSharp.csproj"
+                      Condition="'$(UseLocalTensorRtProject)' == 'true'" />
     <ProjectReference Include="..\alanxinn.CvinferSharp\alanxinn.CvinferSharp.Denglin.csproj"
                       Condition="'$(UseLocalDenglinProject)' == 'true'" />
     <PackageReference Include="OpenCvSharp4.Windows" Version="4.13.0.20260627" />
   </ItemGroup>
+  <Target Name="CopyLocalTensorRtRuntime" AfterTargets="Build" Condition="'$(UseLocalTensorRtProject)' == 'true'">
+    <ItemGroup>
+      <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_trt.dll" />
+      <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_sam3.dll" />
+      <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bintrt\*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LocalTensorRtRuntime)" DestinationFolder="$(OutDir)runtimes\win-x64\native" />
+  </Target>
 </Project>

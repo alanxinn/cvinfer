@@ -17,29 +17,26 @@ namespace alanxinn.TensorRt;
 /// </summary>
 public static class TensorRtRuntime
 {
-    private const string PackageVersion = "0.1.3";
-    private const string RuntimeArchiveName = "tensorrt8.6.1.6-cuda11.8-runtime-win-x64-0.1.3.zip";
-    private const string DefaultDownloadUrl =
-        "https://github.com/alanxinn/cvinfer/releases/download/v0.1.3/" +
-        RuntimeArchiveName;
+    private const string PackageVersion = "0.2.0-trt10";
+    private const string RuntimeArchiveName = "tensorrt10.16.1.11-cuda12.9-cudnn9.27-runtime-win-x64.zip";
+    // No TRT 10 release archive is published by this branch. Never fall back
+    // to the incompatible TRT 8 archive. A deployment can configure a mirror.
+    private const string DefaultDownloadUrl = "";
 
     private static readonly string[] RequiredFiles =
     {
-        "nvinfer.dll",
-        "nvinfer_plugin.dll",
-        "nvonnxparser.dll",
-        "cudart64_110.dll",
-        "cublas64_11.dll",
-        "cublasLt64_11.dll",
-        "cudnn64_8.dll",
-        "zlibwapi.dll"
+        "nvinfer_10.dll",
+        "nvinfer_plugin_10.dll",
+        "nvonnxparser_10.dll",
+        "nvinfer_builder_resource_ptx_10.dll",
+        "cudart64_12.dll"
     };
 
     private static readonly HttpClient HttpClient = CreateHttpClient();
     private static readonly SemaphoreSlim InitializeLock = new SemaphoreSlim(1, 1);
     private static string? initializedDirectory;
 
-    /// <summary>Versioned GitHub Release ZIP URL. Override this for a private mirror.</summary>
+    /// <summary>Optional TensorRT 10 runtime ZIP URL for a deployment mirror.</summary>
     public static string DownloadUrl { get; set; } =
         Environment.GetEnvironmentVariable("ALANXINN_TENSORRT_RUNTIME_URL") ?? DefaultDownloadUrl;
 
@@ -86,7 +83,7 @@ public static class TensorRtRuntime
             if (initializedDirectory != null)
                 return initializedDirectory;
 
-            var localDirectory = FindLocalRuntimeDirectory();
+            var localDirectory = FindLocalRuntimeDirectory() ?? StageInstalledRuntime();
             if (localDirectory == null)
             {
                 if (DisableAutoDownload)
@@ -97,6 +94,12 @@ public static class TensorRtRuntime
             }
 
             SetDllDirectory(localDirectory);
+            // The inference wrapper also calls SetDllDirectory. Keep builder
+            // resource/cuDNN component discovery valid when both APIs share
+            // one process and the most recently selected DLL directory changes.
+            var processPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+            if (!processPath.Split(Path.PathSeparator).Contains(localDirectory, StringComparer.OrdinalIgnoreCase))
+                Environment.SetEnvironmentVariable("PATH", localDirectory + Path.PathSeparator + processPath);
             initializedDirectory = localDirectory;
             return localDirectory;
         }
@@ -109,6 +112,13 @@ public static class TensorRtRuntime
     private static string? FindLocalRuntimeDirectory()
     {
         var candidates = new List<string>();
+        AddCandidate(candidates, Environment.GetEnvironmentVariable("ALANXINN_TENSORRT_RUNTIME_DIR"));
+        // Also discover the runtime staged by a local CMake build.
+        var parent = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var depth = 0; parent != null && depth < 8; ++depth, parent = parent.Parent) {
+            AddCandidate(candidates, Path.Combine(parent.FullName, "builder_runtime"));
+            AddCandidate(candidates, Path.Combine(parent.FullName, "build", "trt10-release", "builder_runtime"));
+        }
         AddCandidate(candidates, Path.Combine(AppContext.BaseDirectory, "runtimes", "win-x64", "native"));
         AddCandidate(candidates, AppContext.BaseDirectory);
         var assemblyDirectory = Path.GetDirectoryName(typeof(TensorRtRuntime).GetTypeInfo().Assembly.Location);
@@ -121,10 +131,36 @@ public static class TensorRtRuntime
         return candidates.FirstOrDefault(ContainsRequiredRuntime);
     }
 
+    private static string? StageInstalledRuntime()
+    {
+        var trt = Environment.GetEnvironmentVariable("TENSORRT_ROOT") ??
+            @"C:\Program Files\NVIDIA GPU Computing Toolkit\TensorRT-10.16.1.11-cuda-12";
+        var cuda = Environment.GetEnvironmentVariable("CUDA_PATH") ??
+            @"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9";
+        var cudnn = Environment.GetEnvironmentVariable("CUDNN_ROOT") ?? @"C:\Program Files\NVIDIA\CUDNN\v9.27";
+        var trtBin = Path.Combine(trt, "bin");
+        var cudaBin = Path.Combine(cuda, "bin");
+        if (!File.Exists(Path.Combine(trtBin, "nvinfer_10.dll")) || !File.Exists(Path.Combine(cudaBin, "cudart64_12.dll")))
+            return null;
+        var cache = GetCacheDirectory();
+        Directory.CreateDirectory(cache);
+        foreach (var pattern in new[] { "nvinfer_10.dll", "nvinfer_plugin_10.dll", "nvonnxparser_10.dll", "nvinfer_builder_resource*_10.dll" })
+            foreach (var source in Directory.GetFiles(trtBin, pattern))
+                File.Copy(source, Path.Combine(cache, Path.GetFileName(source)), true);
+        foreach (var pattern in new[] { "cudart64_12.dll", "cublas*64_12.dll", "nvrtc*.dll" })
+            foreach (var source in Directory.GetFiles(cudaBin, pattern))
+                File.Copy(source, Path.Combine(cache, Path.GetFileName(source)), true);
+        var cudnnBin = Path.Combine(cudnn, "bin", "12.9", "x64");
+        if (Directory.Exists(cudnnBin))
+            foreach (var source in Directory.GetFiles(cudnnBin, "cudnn*64_9.dll"))
+                File.Copy(source, Path.Combine(cache, Path.GetFileName(source)), true);
+        return ContainsRequiredRuntime(cache) ? cache : null;
+    }
+
     private static async Task<string> DownloadRuntimeAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(DownloadUrl))
-            throw new InvalidOperationException("TensorRtRuntime.DownloadUrl must be configured before first use.");
+            throw new InvalidOperationException("No TensorRT 10 runtime was found. Build with scripts/Build-Trt10.ps1, set ALANXINN_TENSORRT_RUNTIME_DIR, TENSORRT_ROOT/CUDA_PATH, or configure TensorRtRuntime.DownloadUrl for your TRT 10 runtime ZIP.");
 
         var cacheDirectory = GetCacheDirectory();
         if (ContainsRequiredRuntime(cacheDirectory))
@@ -151,7 +187,7 @@ public static class TensorRtRuntime
             if (!string.IsNullOrWhiteSpace(ExpectedSha256))
             {
                 var actualSha256 = ComputeSha256(archivePath);
-                if (!string.Equals(actualSha256, NormalizeHash(ExpectedSha256), StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(actualSha256, NormalizeHash(ExpectedSha256!), StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("TensorRT runtime ZIP SHA256 does not match ExpectedSha256.");
             }
 
@@ -159,13 +195,12 @@ public static class TensorRtRuntime
             ZipFile.ExtractToDirectory(archivePath, extractionDirectory);
             var extractedFiles = Directory.GetFiles(extractionDirectory, "*.dll", SearchOption.AllDirectories);
             foreach (var fileName in RequiredFiles)
-            {
-                var source = extractedFiles.FirstOrDefault(path =>
-                    string.Equals(Path.GetFileName(path), fileName, StringComparison.OrdinalIgnoreCase));
-                if (source == null)
+                if (!extractedFiles.Any(path => string.Equals(Path.GetFileName(path), fileName, StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidDataException("TensorRT runtime ZIP is missing " + fileName + ".");
-                File.Copy(source, Path.Combine(cacheDirectory, fileName), true);
-            }
+            // Keep architecture-specific builder resources and all cuDNN 9
+            // components. Copying only the main cuDNN DLL is insufficient.
+            foreach (var source in extractedFiles)
+                File.Copy(source, Path.Combine(cacheDirectory, Path.GetFileName(source)), true);
 
             if (!ContainsRequiredRuntime(cacheDirectory))
                 throw new InvalidDataException("TensorRT runtime ZIP did not produce a complete runtime directory.");
@@ -174,8 +209,8 @@ public static class TensorRtRuntime
         catch (Exception exception) when (!(exception is OperationCanceledException))
         {
             throw new InvalidOperationException(
-                "Unable to download TensorRT runtime from GitHub. Configure TensorRtRuntime.DownloadUrl " +
-                "or provision the eight runtime DLLs manually.", exception);
+                "Unable to download TensorRT runtime from the configured URL. Configure TensorRtRuntime.DownloadUrl " +
+                "or provision the TensorRT 10 runtime DLLs manually.", exception);
         }
         finally
         {
@@ -202,7 +237,7 @@ public static class TensorRtRuntime
     private static void AddCandidate(ICollection<string> candidates, string? path)
     {
         if (!string.IsNullOrWhiteSpace(path) && !candidates.Contains(path, StringComparer.OrdinalIgnoreCase))
-            candidates.Add(path);
+            candidates.Add(path!);
     }
 
     private static string ComputeSha256(string path)

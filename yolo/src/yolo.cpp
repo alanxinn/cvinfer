@@ -60,26 +60,36 @@ std::vector<float> preprocess_bgr(const std::uint8_t* data, int width, int heigh
     if (transform) *transform = {scale, pad_x, pad_y, width, height};
     const std::size_t plane = static_cast<std::size_t>(config.input_width) * config.input_height;
     std::vector<float> chw(plane * 3, 114.0F / 255.0F);
-    std::vector<int> source_x(static_cast<std::size_t>(resized_w));
-    std::vector<int> destination_x(static_cast<std::size_t>(resized_w));
-    for (int x = 0; x < resized_w; ++x) {
-        source_x[static_cast<std::size_t>(x)] = (std::min)(width - 1, static_cast<int>(x / scale));
-        destination_x[static_cast<std::size_t>(x)] =
-            (std::min)(config.input_width - 1, (std::max)(0, static_cast<int>(x + pad_x)));
-    }
-    for (int y = 0; y < resized_h; ++y) {
-        const int sy = (std::min)(height - 1, static_cast<int>(y / scale));
-        const int dy = (std::min)(config.input_height - 1, (std::max)(0, static_cast<int>(y + pad_y)));
-        const auto* source_row = data + static_cast<std::size_t>(sy) * width * channels;
-        float* red_row = chw.data() + static_cast<std::size_t>(dy) * config.input_width;
-        float* green_row = red_row + plane;
-        float* blue_row = green_row + plane;
-        for (int x = 0; x < resized_w; ++x) {
-            const auto* pixel = source_row + static_cast<std::size_t>(source_x[static_cast<std::size_t>(x)]) * channels;
-            const int dx = destination_x[static_cast<std::size_t>(x)];
-            red_row[dx] = pixel[2] / 255.0F;
-            green_row[dx] = pixel[1] / 255.0F;
-            blue_row[dx] = pixel[0] / 255.0F;
+    // Match the CUDA affine letterbox sampler (half-pixel bilinear with
+    // padding). Nearest-neighbour resizing previously changed scores/boxes
+    // simply by switching the preprocessing backend.
+    struct Sample { int lo, hi; float weight; };
+    const auto coordinates = [](int position, float pad, float ratio) {
+        const float source = (position - pad + 0.5F) / ratio - 0.5F;
+        const int lo = static_cast<int>(std::floor(source));
+        return Sample{lo, lo + 1, source - lo};
+    };
+    std::vector<Sample> xs(config.input_width);
+    for (int x = 0; x < config.input_width; ++x) xs[x] = coordinates(x, pad_x, scale);
+    const auto pixel = [&](int x, int y, int channel) -> float {
+        if (x < 0 || y < 0 || x >= width || y >= height) return 114.0F;
+        return data[(static_cast<std::size_t>(y) * width + x) * channels + channel];
+    };
+    for (int y = 0; y < config.input_height; ++y) {
+        const auto sy = coordinates(y, pad_y, scale);
+        for (int x = 0; x < config.input_width; ++x) {
+            const auto sx = xs[x];
+            if (sx.hi < 0 || sx.lo > width || sy.hi < 0 || sy.lo > height) continue;
+            const float w00 = (1 - sx.weight) * (1 - sy.weight);
+            const float w01 = sx.weight * (1 - sy.weight);
+            const float w10 = (1 - sx.weight) * sy.weight;
+            const float w11 = sx.weight * sy.weight;
+            for (int c = 0; c < 3; ++c) {
+                const int channel = 2 - c;
+                const float value = w00 * pixel(sx.lo, sy.lo, channel) + w01 * pixel(sx.hi, sy.lo, channel)
+                                  + w10 * pixel(sx.lo, sy.hi, channel) + w11 * pixel(sx.hi, sy.hi, channel);
+                chw[c * plane + static_cast<std::size_t>(y) * config.input_width + x] = value / 255.0F;
+            }
         }
     }
     return chw;

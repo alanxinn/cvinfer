@@ -5,8 +5,10 @@ C# 调用 TensorRT native builder，将 ONNX 转为 serialized engine。
 
 ## 安装
 
+本分支版本为 `0.2.0-trt10`，使用本地项目引用或自行 pack；旧的已发布包不适用于 TRT 10。
+
 ```powershell
-dotnet add package alanxinn.TensorRtOnnxBuilder --version 0.1.3
+dotnet add reference path/to/cvinfer/csharp/alanxinn.TensorRtOnnxBuilder/alanxinn.TensorRtOnnxBuilder.csproj
 ```
 
 要求 Windows x64、NVIDIA 驱动和匹配的 TensorRT/CUDA。
@@ -44,10 +46,12 @@ INT8 适用于包含 Q/DQ 节点的 ONNX。
 
 ## Runtime
 
-缺少 runtime 时默认下载并缓存到：
+本分支优先发现 `ALANXINN_TENSORRT_RUNTIME_DIR`、本地 CMake 的 `builder_runtime`，
+或按 `TENSORRT_ROOT` / `CUDA_PATH` / `CUDNN_ROOT` 从已安装 SDK 生成缓存。
+网络下载必须显式配置匹配 TRT 10 的 ZIP URL；没有默认已发布的 TRT 10 下载包。缓存位于：
 
 ```text
-%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.1.3\win-x64
+%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.2.0-trt10\win-x64
 ```
 
 可配置：

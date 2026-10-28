@@ -1,0 +1,9 @@
+# Separate environment from RF-DETR (which uses Transformers 4.x).
+torch==2.7.1
+torchvision==0.22.1
+transformers==5.8.0
+huggingface-hub==1.14.0
+onnx==1.22.0
+onnxruntime==1.23.2
+opencv-python==4.13.0.92
+scipy==1.15.3

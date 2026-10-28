@@ -64,6 +64,7 @@ endif()
 
 set(CUDA_ROOT "${CMAKE_CUDA_TOOLKIT_ROOT_DIR}" CACHE PATH "CUDA root directory")
 set(TENSORRT_ROOT "" CACHE PATH "TensorRT root directory")
+set(CUDNN_ROOT "" CACHE PATH "cuDNN 9 root directory")
 set(DENGLIN_SDK_ROOT "" CACHE PATH "Denglin Hamming SDK root")
 set(OPENCV_ROOT "" CACHE PATH "OpenCV root directory or install prefix")
 
@@ -130,6 +131,7 @@ if(NOT OpenCV_DIR)
   endforeach()
 endif()
 
+include(cmake/CvinferTensorRT.cmake)
 find_package(OpenCV REQUIRED CONFIG)
 
 add_library(alanxinn_cvinfer_common INTERFACE)
@@ -144,8 +146,9 @@ target_link_directories(alanxinn_cvinfer_common INTERFACE
   "${TENSORRT_ROOT}/lib"
 )
 target_link_libraries(alanxinn_cvinfer_common INTERFACE
-  nvinfer
-  cudart
+  ${CVINFER_NVINFER_LIBRARY}
+  ${CVINFER_PLUGIN_LIBRARY}
+  CUDA::cudart
   ${OpenCV_LIBS}
 )
 
@@ -178,6 +181,8 @@ file(GLOB CVINFER_TRT_RUNTIME_DLLS CONFIGURE_DEPENDS
   ${CVINFER_OPENCV_RELEASE_DLLS}
   "${TENSORRT_ROOT}/lib/nvinfer.dll"
   "${TENSORRT_ROOT}/bin/nvinfer.dll"
+  "${TENSORRT_ROOT}/bin/nvinfer_10.dll"
+  "${TENSORRT_ROOT}/bin/nvinfer_plugin_10.dll"
   "${TENSORRT_ROOT}/lib/zlibwapi.dll"
   "${TENSORRT_ROOT}/bin/zlibwapi.dll"
   "${CUDA_ROOT}/bin/cudart64_*.dll"
@@ -236,6 +241,8 @@ endif()
 file(GLOB CVINFER_DELAY_LOAD_DLLS CONFIGURE_DEPENDS
   ${CVINFER_OPENCV_RELEASE_DLLS}
   "${TENSORRT_ROOT}/lib/nvinfer.dll"
+  "${TENSORRT_ROOT}/bin/nvinfer_10.dll"
+  "${TENSORRT_ROOT}/bin/nvinfer_plugin_10.dll"
   "${CUDA_ROOT}/bin/cudart64_*.dll")
 list(FILTER CVINFER_DELAY_LOAD_DLLS EXCLUDE REGEX "d\\.dll$")
 
@@ -353,6 +360,7 @@ if(BUILD_DENGLIN_ACCELERATOR)
 endif()
 add_subdirectory(yolo)
 add_subdirectory(rf_detr)
+add_subdirectory(sam3)
 if(BUILD_CVINFER_DLL)
   add_subdirectory(api)
 endif()

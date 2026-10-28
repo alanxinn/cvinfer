@@ -6,9 +6,8 @@
 ## 准备
 
 ```powershell
-cmake --preset ninja-msvc-release
-cmake --build --preset build-ninja-msvc-release
-dotnet pack .\csharp\alanxinn.TensorRtOnnxBuilder\alanxinn.TensorRtOnnxBuilder.csproj -c Release
+.\scripts\Build-Trt10.ps1
+dotnet build .\csharp\alanxinn.TensorRtOnnxBuilderDemo -c Release
 ```
 
 ## 固定输入

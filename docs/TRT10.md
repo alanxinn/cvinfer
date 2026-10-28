@@ -1,0 +1,73 @@
+# TensorRT 10 / CUDA 12.9 / cuDNN 9.27
+
+本分支 `trt10` 使用以下 Windows x64 SDK：
+
+| SDK | 路径 |
+| --- | --- |
+| TensorRT 10.16.1.11 | `C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-10.16.1.11-cuda-12` |
+| CUDA 12.9 | `C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9` |
+| cuDNN 9.27 | `C:/Program Files/NVIDIA/CUDNN/v9.27` |
+| OpenCV 4.8 | `E:/opencv/build/x64/vc16/lib` |
+
+## 编译
+
+```powershell
+.\scripts\Build-Trt10.ps1
+.\scripts\Build-Trt10.ps1 -Preset trt10-cuda-release
+```
+
+第二条使用本机已有的 `private/cuda_backend`，无需修改私有仓库源码。
+无私有源码时使用第一条，TensorRT 仍然在 NVIDIA GPU 上执行，前后处理在 CPU 上执行。
+脚本自动使用 VS 2022 Build Tools 和自带 Ninja。默认 SM89 对应本机 RTX 4060，
+其他显卡可传 `-CudaArchitectures 86` 等 CMake CUDA 架构值。
+
+## 下载和导出
+
+使用独立 CPython 3.10 环境，安装 `scripts/requirements-trt10-models.txt`。
+导出使用 CPU，Python 中 PyTorch 的 CUDA wheel 版本不影响 C++ 的 CUDA 12.9 链接。
+
+```powershell
+python scripts/prepare_trt10_models.py
+```
+
+默认从 Ultralytics 官方 GitHub assets v8.4.0 下载 YOLO11n、YOLO26n 的检测、
+分割和姿态模型；从 Roboflow 官方存储下载 RF-DETR Nano 检测和分割权重，验证官方 MD5。
+所有权重记录 SHA256，ONNX 使用 opset 17，原始输出和静态 batch=1。
+缓存位于 `cache/trt10-models`；`models.json` 包含来源、版本、路径和哈希。
+可用 `--models yolo11n rfdetr-nano` 只准备指定模型。
+
+## 引擎及推理验证
+
+```powershell
+python scripts/validate_trt10.py
+python scripts/validate_trt10.py --build build/trt10-cuda-release --compute cuda --reuse-engines
+python scripts/compare_trt10_outputs.py
+python scripts/test_trt10_contract.py
+```
+
+验证脚本使用本项目的 ONNX builder C ABI 构建引擎，再用 public inference C ABI
+验证真实 bus 图片、重复推理、置信度、分割掩码和 17 个姿态关键点。
+每个模型单独进程运行，日志、引擎、结果图片及 CPU/CUDA JSON 报告保存在
+`cache/trt10-validation`。构建可能耗时数分钟；TensorRT 会针对本机 GPU 选择和编译 tactics。
+YOLO 使用 FP16，RF-DETR 保持 FP32 并关闭 TF32。
+数值验证使用独立 ONNX Runtime CPU 推理，与 C++ `TrtSession` 导出的各个原始 tensor 比较。
+YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异当作数值错误。
+完整检查也可运行 `scripts/Test-Trt10.ps1 -Python <CPython路径> -WithCuda -ReuseEngines`。
+
+## 运行库
+
+- `bin/alanxinn_cvinfer_trt.dll`：原生推理 API。
+- `bintrt`：`nvinfer_10.dll`、`nvinfer_plugin_10.dll`、`cudart64_12.dll`、OpenCV，及可选私有 CUDA DLL。
+- `tensorrt_builder/alanxinn_tensorrt_builder.dll`：ONNX builder。
+- `builder_runtime`：parser、builder resource DLL、CUDA 库及 cuDNN 9 的全部组件。
+
+运行原生 demo 时将 `bintrt` 加到当前进程 PATH。C# demo 默认引用本分支源码，
+不会误用 NuGet 中旧的 TRT 8 native DLL。公开 NuGet 打包仍禁止私有 CUDA DLL 依赖。
+本分支没有已发布的 TRT 10 runtime ZIP 默认地址；需要网络分发时设置
+`ALANXINN_TENSORRT_RUNTIME_URL`，并建议配置 `ALANXINN_TENSORRT_RUNTIME_SHA256`。
+`Pack-TensorRtRuntime.ps1` 可从 `builder_runtime` 生成匹配 ZIP。
+
+TensorRT 10 本身不链接外部 cuDNN；SDK 环境按本次要求同时部署 cuDNN 9.27。
+旧 TRT 8 engine、CUDA 11 DLL、cuDNN 8 DLL 不可用于当前构建，需要重新生成 engine。
+
+接口迁移依据：[NVIDIA TensorRT 8 → 10 C++ 迁移说明](https://docs.nvidia.com/deeplearning/tensorrt/10.x.x/api/tensorrt-8x-to-10x-c-api.html)。

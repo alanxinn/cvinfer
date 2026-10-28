@@ -1,0 +1,8 @@
+torch==2.7.1
+torchvision==0.22.1
+transformers==5.8.0
+huggingface-hub==1.14.0
+onnx==1.22.0
+onnxruntime==1.23.2
+numpy==2.2.6
+opencv-python==4.13.0.92

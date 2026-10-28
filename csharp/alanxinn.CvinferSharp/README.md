@@ -6,6 +6,7 @@
 
 - YOLO11/YOLO26 检测、分割和 Pose，RF-DETR 检测与分割；
 - SAM3 框/正负点/文本接口，真实权重验证状态见 `sam3/README.md`；
+- DINOv3 图像特征、patch/feature map 和余弦相似度，见 `dinov3/README.md`；
 - BGR 图像推理；
 - 检测框、Mask、耗时读取；
 - TensorRT/Denglin 推理后端选择；
@@ -84,6 +85,8 @@ runtimes/win-x64/native/
 
 ```text
 alanxinn_cvinfer_trt.dll
+alanxinn_cvinfer_sam3.dll
+alanxinn_cvinfer_dinov3.dll
 nvinfer_10.dll
 nvinfer_plugin_10.dll
 cudart64_*.dll

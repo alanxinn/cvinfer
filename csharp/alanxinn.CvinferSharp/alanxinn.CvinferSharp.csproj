@@ -22,8 +22,8 @@
     <AssemblyTitle>alanxinn.CvinferSharp</AssemblyTitle>
     <AssemblyDescription>C# managed wrapper for the TensorRT native inference API.</AssemblyDescription>
 
-    <PackageTags>TensorRT;YOLO11;RF-DETR;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
-    <PackageReleaseNotes>YOLO11/RF-DETR detection, segmentation and pose inference.</PackageReleaseNotes>
+    <PackageTags>TensorRT;YOLO11;RF-DETR;SAM3;DINOv3;features;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
+    <PackageReleaseNotes>TRT10 inference with YOLO/RF-DETR, SAM3 prompt interfaces and DINOv3 image feature extraction.</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
@@ -77,6 +77,7 @@
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\$(NativeCvinferLibraryName)"
                                   Condition="Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_sam3.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_sam3.dll')" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\nvinfer_10.dll"
                                   Condition="Exists('$(NativeTrtRuntimeSource)\nvinfer_10.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\nvinfer_plugin_10.dll" />
@@ -131,6 +132,7 @@
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\$(NativeCvinferLibraryName)"
                                   Condition="Exists('$(NativeRuntimeDestination)\$(NativeCvinferLibraryName)')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_sam3.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_sam3.dll')" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer_10.dll"
                                   Condition="Exists('$(NativeRuntimeDestination)\nvinfer_10.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer_plugin_10.dll" />

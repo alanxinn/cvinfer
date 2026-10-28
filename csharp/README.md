@@ -139,4 +139,6 @@ ONNX 转换见：
 - [转换 Demo](alanxinn.TensorRtOnnxBuilderDemo/README.md)
 
 SAM3 使用独立的 `Sam3Segmentor`，参见 [SAM3 接口与验证范围](../sam3/README.md)。
+DINOv3 使用 `DinoV3FeatureExtractor` 提取全局／patch／NCHW 特征，支持图像余弦相似度，
+参见 [DINOv3 图像推理](../dinov3/README.md)。
 本分支 Demo 默认引用本地 TRT10 项目。

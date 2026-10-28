@@ -14,6 +14,7 @@
     <ItemGroup>
       <InferenceRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_trt.dll" />
       <InferenceRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_sam3.dll" />
+      <InferenceRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_dinov3.dll')" />
       <InferenceRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bintrt\*.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(InferenceRuntime)" DestinationFolder="$(OutDir)runtimes\win-x64\native" />

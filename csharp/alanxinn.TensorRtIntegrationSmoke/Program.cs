@@ -1,8 +1,8 @@
 using alanxinn;
 using alanxinn.TensorRt;
 
-if (args.Length != 2 && args.Length != 3)
-    throw new ArgumentException("usage: TensorRtIntegrationSmoke fixture-directory yolo.engine [tiny-sam3-engine-directory]");
+if (args.Length < 2 || args.Length > 4)
+    throw new ArgumentException("usage: TensorRtIntegrationSmoke fixture-directory yolo.engine [tiny-sam3-engine-directory] [tiny-dinov3.engine]");
 var directory = Path.GetFullPath(args[0]);
 var onnx = Path.Combine(directory, "int64.onnx");
 var engine = Path.Combine(directory, "csharp-int64.engine");
@@ -24,7 +24,7 @@ TensorRtOnnxBuilder.Build(onnx, engine, options);
 if (!File.Exists(engine) || new FileInfo(engine).Length == 0)
     throw new InvalidOperationException("C# builder returned an empty engine");
 Console.WriteLine("PASS: builder -> inference -> builder in one .NET process");
-if (args.Length == 3)
+if (args.Length >= 3)
 {
     using var sam = new Sam3Segmentor(args[2], confidenceThreshold: 0, maxPoints: 8);
     sam.SetImage(new byte[48 * 32 * 3], 48, 32);
@@ -43,4 +43,24 @@ if (args.Length == 3)
     if (text.Count != 2 || tokens.Count != 2 || !text[0].Pixels.SequenceEqual(tokens[0].Pixels))
         throw new InvalidOperationException("C# SAM3 text/token/mask contract failed");
     Console.WriteLine("PASS: SAM3 C# box/positive/negative/text/tokens (RANDOM tiny model; quality unvalidated)");
+}
+if (args.Length == 4)
+{
+    using var dino = new DinoV3FeatureExtractor(args[3]);
+    var first = dino.InferBgr(new byte[48 * 32 * 3], 48, 32);
+    var saved = first.GlobalEmbedding.ToArray();
+    var second = dino.InferChw(new float[3 * dino.InputWidth * dino.InputHeight]);
+    if (first.GlobalEmbedding.Length != 32 || first.PatchTokens.Shape[0] != 1 || first.PatchTokens.Shape[2] != 32 ||
+        first.FeatureMap.Shape.Length != 4 || !saved.SequenceEqual(first.GlobalEmbedding))
+        throw new InvalidOperationException("DINOv3 C# tensor copy/shape/lifetime failed");
+    if (Math.Abs(DinoV3FeatureExtractor.CosineSimilarity(first.GlobalEmbedding, first.GlobalEmbedding) - 1) > 1e-6 ||
+        Math.Abs(first.NormalizedEmbedding.Select(v => (double)v * v).Sum() - 1) > 1e-5)
+        throw new InvalidOperationException("DINOv3 C# normalization/similarity failed");
+    dino.Dispose();
+    if (!saved.SequenceEqual(first.GlobalEmbedding)) throw new InvalidOperationException("Disposed model invalidated owned DINOv3 features");
+    try { DinoV3FeatureExtractor.CosineSimilarity(new float[32], first.GlobalEmbedding); throw new Exception("Zero-vector cosine was accepted"); }
+    catch (ArgumentException) { }
+    try { dino.InferChw(new float[3 * dino.InputWidth * dino.InputHeight]); throw new Exception("Disposed DINOv3 was accepted"); }
+    catch (ObjectDisposedException) { }
+    Console.WriteLine("PASS: DINOv3 C# image/CHW/features/similarity/lifetime (RANDOM tiny model; quality unvalidated)");
 }

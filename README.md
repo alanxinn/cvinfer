@@ -7,7 +7,7 @@ TensorRT/Denglin 双后端推理项目，包含：
   接口接入 YOLO、RF-DETR 和 C ABI。
 - `yolo`：YOLO11 检测、分割、pose 前后处理。
 - `rf_detr`：RF-DETR 检测/分割前后处理。
-- `sam3`：SAM3 框与正负点交互、文本概念分割；C++/C ABI/C# 接口已接入，完整官方权重待授权后验证。
+- `sam3`：SAM3 框与正负点交互、文本概念分割；已使用本地 SAM3.1 真实权重完成 C ABI/C# 推理对照验证。
 - `dinov3`：DINOv3 ViT/ConvNeXt 图像特征推理，输出全局向量、patch 特征与特征图。
 - `api`：稳定 C ABI 动态库。
 - `tensorrt_builder`：ONNX 转 TensorRT engine。

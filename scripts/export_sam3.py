@@ -8,6 +8,7 @@ import gc
 import json
 import os
 from pathlib import Path
+from sam3_checkpoint import component_path, load_sam3_component, source_metadata
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("USE_FLAX", "0")
 
@@ -111,6 +112,8 @@ def main():
     p.add_argument("--checkpoint", default="facebook/sam3", help="Authorized HF repository or local snapshot directory")
     p.add_argument("--output", type=Path, default=Path("cache/sam3/onnx"))
     p.add_argument("--max-points", type=int, default=32)
+    p.add_argument("--graphs", nargs="+", choices=["detector_vision", "tracker_vision", "text_encoder", "text_decoder", "box_decoder", "interactive_decoder"],
+                   help="Export only selected graphs; keep existing bundle records for the others")
     a = p.parse_args()
     if a.max_points < 1:
         p.error("--max-points must be positive")
@@ -127,9 +130,45 @@ def main():
     output = a.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     DVision, Text, DHead, TVision, Box, Click = wrappers(torch)
-    records = []
+    old_bundle = output / "bundle.json"
+    records = json.loads(old_bundle.read_text()).get("graphs", []) if a.graphs and old_bundle.exists() else []
+    if a.graphs and old_bundle.exists() and json.loads(old_bundle.read_text())["checkpoint"] != a.checkpoint:
+        raise ValueError("Partial export cannot mix different checkpoints in one bundle")
+    selected = set(a.graphs or ["detector_vision", "text_encoder", "text_decoder", "tracker_vision", "box_decoder", "interactive_decoder"])
+    if selected <= {"box_decoder", "interactive_decoder"}:
+        # Decoder-only repairs must not rerun two full visual backbones.
+        if not old_bundle.is_file():
+            p.error("Decoder-only export requires an existing complete bundle")
+        existing = json.loads(old_bundle.read_text())
+        tracker = load_sam3_component(a.checkpoint, "tracker")
+        tracker_size = tracker.config.vision_config.image_size
+        dims = tracker.config.vision_config.backbone_feature_sizes
+        hidden = tracker.config.mask_decoder_config.hidden_size
+        tf = [torch.zeros(1, c, *size) for c, size in zip([hidden // 8, hidden // 4, hidden], dims)]
+        box = torch.tensor([[[.1 * tracker_size, .1 * tracker_size, .8 * tracker_size, .8 * tracker_size]]])
+        points = torch.tensor([[[[.4 * tracker_size, .4 * tracker_size], [.15 * tracker_size, .15 * tracker_size]]]])
+        labels = torch.tensor([[[1, 0]]], dtype=torch.int64)
+        for name, module, args, names, dynamic in [
+            ("box_decoder", Box(tracker), (*tf, box), ["f0", "f1", "f2", "input_boxes"], None),
+            ("interactive_decoder", Click(tracker), (*tf, box, points, labels),
+             ["f0", "f1", "f2", "input_boxes", "input_points", "input_labels"],
+             {"input_points": {2: "points"}, "input_labels": {2: "points"}})]:
+            if name not in selected: continue
+            path = output / (name + ".onnx")
+            with torch.inference_mode():
+                torch.onnx.export(module.eval(), args, str(path), input_names=names, output_names=["masks", "iou_scores"],
+                                  opset_version=17, dynamic_axes=dynamic, dynamo=False, do_constant_folding=True)
+            onnx.checker.check_model(str(path))
+            print("Exported", name, flush=True)
+        existing["source"] = source_metadata(a.checkpoint)
+        existing["max_points"] = a.max_points
+        existing["status"] = "ONNX_EXPORTED_ENGINE_VALIDATION_REQUIRED"
+        old_bundle.write_text(json.dumps(existing, indent=2))
+        return
 
     def save(name, module, inputs, input_names, output_names, dynamic=None):
+        if a.graphs and name not in a.graphs:
+            return
         path = output / (name + ".onnx")
         module.eval()
         with torch.inference_mode():
@@ -137,12 +176,13 @@ def main():
                               opset_version=17, dynamic_axes=dynamic, dynamo=False, do_constant_folding=True)
         # Large encoders can use ONNX external data. Preserve the entire folder.
         onnx.checker.check_model(str(path))
+        records[:] = [r for r in records if r["name"] != name]
         records.append({"name": name, "onnx": str(path), "inputs": input_names, "outputs": output_names})
         print("Exported", name, flush=True)
 
-    processor = Sam3Processor.from_pretrained(a.checkpoint)
+    processor = Sam3Processor.from_pretrained(component_path(a.checkpoint, "detector"))
     export_tokenizer(processor.tokenizer, output)
-    detector = Sam3Model.from_pretrained(a.checkpoint, attn_implementation="eager", dtype=torch.float32).eval()
+    detector = load_sam3_component(a.checkpoint, "detector")
     size = detector.config.vision_config.image_size
     if not isinstance(size, int):
         raise ValueError("This exporter requires square SAM3 image inputs")
@@ -159,7 +199,7 @@ def main():
          ["f0", "f1", "f2", "p0", "p1", "p2", "text_features", "attention_mask"], ["boxes", "scores", "masks"])
     del detector, features, text
     gc.collect()
-    tracker = Sam3TrackerModel.from_pretrained(a.checkpoint, attn_implementation="eager", dtype=torch.float32).eval()
+    tracker = load_sam3_component(a.checkpoint, "tracker")
     tracker_size = tracker.config.vision_config.image_size
     tracker_pixels = torch.zeros(1, 3, tracker_size, tracker_size)
     with torch.inference_mode():
@@ -173,6 +213,7 @@ def main():
          ["f0", "f1", "f2", "input_boxes", "input_points", "input_labels"], ["masks", "iou_scores"],
          {"input_points": {2: "points"}, "input_labels": {2: "points"}})
     manifest = {"checkpoint": a.checkpoint, "transformers": transformers.__version__, "torch": torch.__version__,
+                "source": source_metadata(a.checkpoint), "synthetic": False,
                 "detector_size": size, "tracker_size": tracker_size, "text_length": length,
                 "max_points": a.max_points, "graphs": records, "status": "ONNX_EXPORTED_ENGINE_VALIDATION_REQUIRED"}
     (output / "bundle.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

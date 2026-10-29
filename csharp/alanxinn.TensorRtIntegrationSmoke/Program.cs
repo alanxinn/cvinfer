@@ -1,6 +1,40 @@
 using alanxinn;
 using alanxinn.TensorRt;
 
+if (args.Length == 4 && args[0] == "--real-sam3")
+{
+    // Same real image and prompts as validate_sam3_real.py. Compare owned mask
+    // buffers bit for bit across the Python C ABI and managed wrapper.
+    var reference = Path.GetFullPath(args[3]);
+    var pixels = File.ReadAllBytes(args[2]);
+    using var sam = new Sam3Segmentor(args[1]);
+    sam.SetImage(pixels, 810, 1080);
+    sam.SetBox(50, 390, 245, 910);
+    void Check(string stage, Sam3Mask mask, int index = 0)
+    {
+        if (mask.Width != 810 || mask.Height != 1080 ||
+            !mask.Pixels.SequenceEqual(File.ReadAllBytes(Path.Combine(reference, $"{stage}-{index}.mask"))))
+            throw new InvalidOperationException($"Real SAM3 C# mask differs: {stage}/{index}");
+    }
+    var initial = sam.Predict(); Check("box", initial);
+    sam.AddPoint(150, 600, positive: true); Check("positive", sam.Predict());
+    sam.AddPoint(240, 850, positive: false); Check("negative", sam.Predict());
+    sam.ClearPoints(); Check("box", sam.Predict());
+    using var tokens = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(reference, "text-tokens.json")));
+    var root = tokens.RootElement;
+    var ids = root.GetProperty("ids").EnumerateArray().Select(x => x.GetInt64()).ToArray();
+    var attention = root.GetProperty("attention").EnumerateArray().Select(x => x.GetInt64()).ToArray();
+    var text = sam.PredictText(root.GetProperty("text").GetString()!);
+    var encoded = sam.PredictTokens(ids, attention);
+    var expectedCount = Directory.GetFiles(reference, "text-*.mask").Length;
+    if (text.Count != expectedCount || encoded.Count != expectedCount || expectedCount == 0)
+        throw new InvalidOperationException("Real SAM3 C# text instance count differs");
+    for (int i = 0; i < expectedCount; ++i) { Check("text", text[i], i); Check("text", encoded[i], i); }
+    sam.Dispose(); Check("box", initial);
+    Console.WriteLine($"PASS: REAL SAM3 C# box/positive/negative/clear/text/tokens/lifetime; text instances={text.Count}");
+    return;
+}
+
 if (args.Length < 2 || args.Length > 4)
     throw new ArgumentException("usage: TensorRtIntegrationSmoke fixture-directory yolo.engine [tiny-sam3-engine-directory] [tiny-dinov3.engine]");
 var directory = Path.GetFullPath(args[0]);

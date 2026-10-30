@@ -66,6 +66,7 @@ package/
 # model weights
 **/weights/
 sam3_dinov3_onnx_tensorrt_analysis.md
+models/
 
 
 cache/

@@ -7,7 +7,7 @@
 
     <RootNamespace>alanxinn</RootNamespace>
     <AssemblyName>alanxinn.CvinferSharp</AssemblyName>
-    <PackageId>alanxinn.CvinferSharp</PackageId>
+    <PackageId>alanxinn.CvinferSharp.TensorRT10</PackageId>
 
     <Version>0.2.0-trt10</Version>
     <AssemblyVersion>0.2.0.0</AssemblyVersion>
@@ -55,7 +55,7 @@
 
     <None Include="alanxinn.CvinferSharp.targets"
           Pack="true"
-          PackagePath="buildTransitive\alanxinn.CvinferSharp.targets"
+          PackagePath="buildTransitive\alanxinn.CvinferSharp.TensorRT10.targets"
           Visible="false" />
 
     <None Include="..\..\LICENSE.txt"

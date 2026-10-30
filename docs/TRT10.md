@@ -56,6 +56,34 @@ YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异�
 
 ## 运行库
 
+### NuGet 与环境打包
+
+```powershell
+.\scripts\Pack-Trt10.ps1
+# 已编译原生库、已生成 runtime ZIP 时：
+.\scripts\Pack-Trt10.ps1 -SkipNativeBuild -SkipRuntimeArchive
+```
+
+产物保存在 `package/TensorRT10`：
+
+- `alanxinn.CvinferSharp.TensorRT10.0.2.0-trt10.nupkg`：推理封装与 native/runtime。
+- `alanxinn.TensorRtOnnxBuilder.TensorRT10.0.2.0-trt10.nupkg`：ONNX builder 封装与 native builder。
+- `tensorrt10.16.1.11-cuda12.9-cudnn9.27-runtime-win-x64.zip`：完整 builder 环境，含各架构 resource DLL 和 cuDNN 9 组件。
+- `artifacts.json`：产物大小和 SHA256。
+
+两个 NuGet 支持 net472/net6.0/net8.0；程序集名和 C# 命名空间不变。
+新包通过 `.TensorRT10` 后缀与其他 TensorRT 大版本区分，Denglin 包名不变。
+将 ZIP 解压后设置 `ALANXINN_TENSORRT_RUNTIME_DIR` 为包含 DLL 的目录即可使用 builder。
+无需在线下载环境；本机仍需 NVIDIA 驱动。NuGet 打包使用不依赖私有 CUDA DLL 的 public native 构建。
+
+打包脚本默认执行 `test_trt10_nuget.py`：从本地 feed 用 **PackageReference** 还原独立消费项目，
+核对三种 TFM、native 目录隔离和实际 DLL 来源；自动读取本地模型清单查找 engine/ONNX，
+通过 NuGet builder 重建 YOLO11 检测引擎，再运行 YOLO11/26 det/seg/pose、RF-DETR det/seg、
+本地 SAM3.1 和可用 DINOv3。缺失引擎但有 ONNX 时自动构建。
+无真实 DINOv3 权重时仅运行明确标记为 synthetic 的算子检查。
+报告在 `cache/nuget-trt10-validation/validation.json`，日志位于该目录和产物 `logs` 目录。
+2026-10-30 的实际打包产物、哈希和 11 项消费测试结果见 [NuGet 验证记录](TRT10_NUGET_VALIDATION.md)。
+
 - `bin/alanxinn_cvinfer_trt.dll`：原生推理 API。
 - `bintrt`：`nvinfer_10.dll`、`nvinfer_plugin_10.dll`、`cudart64_12.dll`、OpenCV，及可选私有 CUDA DLL。
 - `tensorrt_builder/alanxinn_tensorrt_builder.dll`：ONNX builder。

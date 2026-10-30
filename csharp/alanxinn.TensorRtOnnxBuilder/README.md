@@ -1,14 +1,15 @@
-# alanxinn.TensorRtOnnxBuilder
+# alanxinn.TensorRtOnnxBuilder.TensorRT10
 
 C# 调用 TensorRT native builder，将 ONNX 转为 serialized engine。
 不启动 `trtexec.exe`。
 
 ## 安装
 
-本分支版本为 `0.2.0-trt10`，使用本地项目引用或自行 pack；旧的已发布包不适用于 TRT 10。
+TensorRT 10 包名为 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，版本为 `0.2.0-trt10`。
+程序集名和 `using alanxinn.TensorRt` 保持兼容；旧的无后缀已发布包不适用于 TRT 10。
 
 ```powershell
-dotnet add reference path/to/cvinfer/csharp/alanxinn.TensorRtOnnxBuilder/alanxinn.TensorRtOnnxBuilder.csproj
+dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.0-trt10 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
 ```
 
 要求 Windows x64、NVIDIA 驱动和匹配的 TensorRT/CUDA。

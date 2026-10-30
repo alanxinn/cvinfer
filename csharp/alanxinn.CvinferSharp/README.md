@@ -1,4 +1,4 @@
-# alanxinn.CvinferSharp
+# alanxinn.CvinferSharp.TensorRT10
 
 `.NET` 封装后端隔离的 native API，支持 `net472`、`net6.0`、`net8.0`。
 
@@ -14,10 +14,12 @@
 
 ## 安装
 
-本分支本地版本为 `0.2.0-trt10`，使用项目引用或从源码 pack；已发布的 0.1.x TensorRT 包使用旧 SDK。
+TensorRT 10 包名为 `alanxinn.CvinferSharp.TensorRT10`，本分支版本为 `0.2.0-trt10`。
+包名按 TensorRT 大版本区分，程序集名及 `using alanxinn` 保持兼容。
+已发布的 0.1.x 无后缀 TensorRT 包使用旧 SDK。
 
 ```powershell
-dotnet add reference path/to/cvinfer/csharp/alanxinn.CvinferSharp/alanxinn.CvinferSharp.csproj
+dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.0-trt10 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
 ```
 
 只使用 Denglin 后端时安装：
@@ -81,7 +83,7 @@ NuGet native 文件位于：
 runtimes/win-x64/native/
 ```
 
-`alanxinn.CvinferSharp`（TensorRT 包）包含：
+`alanxinn.CvinferSharp.TensorRT10`（TensorRT 包）包含：
 
 ```text
 alanxinn_cvinfer_trt.dll
@@ -94,7 +96,7 @@ opencv_world*.dll
 ```
 
 `nvonnxparser_10.dll`、TRT builder resource、cuBLAS、cuDNN 等 builder 依赖不在
-该推理包中；它们由 `alanxinn.TensorRtOnnxBuilder` 的 `TensorRtRuntime`
+该推理包中；它们由 `alanxinn.TensorRtOnnxBuilder.TensorRT10` 的 `TensorRtRuntime`
 单独提供。若某个已构建 engine 依赖额外 TensorRT plugin，应用还需自行部署
 对应 plugin DLL。
 

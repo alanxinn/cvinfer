@@ -41,6 +41,10 @@ plugin、cuBLAS 和 cuDNN 运行库由 `TensorRtRuntime` 单独配置或按需�
 本分支的 TensorRT 包版本为 `0.2.0-trt10`，应从源码构建；下表保留已发布版本信息，
 已发布的 `0.1.x` TensorRT 包对应旧 SDK，不能与本分支的 native DLL 混用。
 
+TRT10 本地包名为 `alanxinn.CvinferSharp.TensorRT10` 和 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，
+运行 `scripts/Pack-Trt10.ps1` 可编译、打包环境并自动测试本地模型。产物位于 `package/TensorRT10`，
+安装与测试说明见 [TRT10 文档](docs/TRT10.md)。
+
 | Package | Version | Description |
 | --- | --- | --- |
 | [alanxinn.CvinferSharp](https://www.nuget.org/packages/alanxinn.CvinferSharp) | 0.1.4 | C# TensorRT 推理封装及 TensorRT/CUDA/OpenCV runtime |

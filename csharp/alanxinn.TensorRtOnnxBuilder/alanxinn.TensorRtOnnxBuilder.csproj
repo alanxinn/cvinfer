@@ -7,7 +7,7 @@
 
     <RootNamespace>alanxinn.TensorRt</RootNamespace>
     <AssemblyName>alanxinn.TensorRtOnnxBuilder</AssemblyName>
-    <PackageId>alanxinn.TensorRtOnnxBuilder</PackageId>
+    <PackageId>alanxinn.TensorRtOnnxBuilder.TensorRT10</PackageId>
 
     <Version>0.2.0-trt10</Version>
     <AssemblyVersion>0.2.0.0</AssemblyVersion>

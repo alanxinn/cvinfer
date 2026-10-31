@@ -14,30 +14,58 @@ if(NOT _trt_version_header MATCHES "#define (NV_TENSORRT_MAJOR|TRT_MAJOR_ENTERPR
   message(FATAL_ERROR "This branch requires TensorRT 10: ${TENSORRT_ROOT}")
 endif()
 
-find_path(CVINFER_CUDNN_INCLUDE cudnn_version.h
-  HINTS "${CUDNN_ROOT}/include/12.9" "${CUDNN_ROOT}/include" NO_DEFAULT_PATH REQUIRED)
-file(STRINGS "${CVINFER_CUDNN_INCLUDE}/cudnn_version.h" _cudnn_version
-  REGEX "^#define CUDNN_(MAJOR|MINOR|PATCHLEVEL) ")
-message(STATUS "cuDNN headers: ${CVINFER_CUDNN_INCLUDE}; ${_cudnn_version}")
-# TensorRT 10 does not link cuDNN. Retain the explicitly selected cuDNN 9
-# runtime for applications that use it alongside inference, in builder_runtime.
-file(GLOB CVINFER_CUDNN_RUNTIME_DLLS CONFIGURE_DEPENDS
-  "${CUDNN_ROOT}/bin/12.9/x64/cudnn*64_9.dll" "${CUDNN_ROOT}/bin/cudnn*64_9.dll")
+option(CVINFER_TRT_INCLUDE_OPTIONAL_LIBRARIES "Stage cuDNN/cuBLAS/NVRTC for plugins that explicitly require them" OFF)
+set(CVINFER_TRT_BUILDER_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}" CACHE STRING "Builder resource SMs, or ALL")
 set(CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY "${CMAKE_BINARY_DIR}/builder_runtime")
 file(GLOB CVINFER_TRT_BUILDER_RUNTIME_DLLS CONFIGURE_DEPENDS
   "${TENSORRT_ROOT}/bin/nvinfer_10.dll"
   "${TENSORRT_ROOT}/bin/nvinfer_plugin_10.dll"
   "${TENSORRT_ROOT}/bin/nvonnxparser_10.dll"
-  "${TENSORRT_ROOT}/bin/nvinfer_builder_resource*_10.dll"
-  "${CUDA_ROOT}/bin/cudart64_12.dll"
-  "${CUDA_ROOT}/bin/cublas64_12.dll"
-  "${CUDA_ROOT}/bin/cublasLt64_12.dll"
-  "${CUDA_ROOT}/bin/nvrtc64_120_0.dll"
-  "${CUDA_ROOT}/bin/nvrtc-builtins64_129.dll")
-list(APPEND CVINFER_TRT_BUILDER_RUNTIME_DLLS ${CVINFER_CUDNN_RUNTIME_DLLS})
+  "${TENSORRT_ROOT}/bin/nvinfer_builder_resource_ptx_10.dll"
+  "${CUDA_ROOT}/bin/cudart64_12.dll")
+if(CVINFER_TRT_BUILDER_ARCHITECTURES STREQUAL "ALL")
+  file(GLOB _builder_resources CONFIGURE_DEPENDS "${TENSORRT_ROOT}/bin/nvinfer_builder_resource_sm*_10.dll")
+  list(APPEND CVINFER_TRT_BUILDER_RUNTIME_DLLS ${_builder_resources})
+else()
+  foreach(_arch IN LISTS CVINFER_TRT_BUILDER_ARCHITECTURES)
+    string(REGEX REPLACE "-(real|virtual)$" "" _arch "${_arch}")
+    if(NOT _arch MATCHES "^[0-9]+$")
+      message(FATAL_ERROR "Set explicit builder SMs (e.g. 89), or ALL")
+    endif()
+    set(_resource "${TENSORRT_ROOT}/bin/nvinfer_builder_resource_sm${_arch}_10.dll")
+    if(NOT EXISTS "${_resource}")
+      message(FATAL_ERROR "Missing TensorRT builder resource: ${_resource}")
+    endif()
+    list(APPEND CVINFER_TRT_BUILDER_RUNTIME_DLLS "${_resource}")
+  endforeach()
+endif()
+if(CVINFER_TRT_INCLUDE_OPTIONAL_LIBRARIES)
+  file(GLOB _optional_runtime CONFIGURE_DEPENDS
+    "${CUDNN_ROOT}/bin/12.9/x64/cudnn*64_9.dll" "${CUDNN_ROOT}/bin/cudnn*64_9.dll"
+    "${CUDA_ROOT}/bin/cublas*64_12.dll" "${CUDA_ROOT}/bin/nvrtc*.dll")
+  list(APPEND CVINFER_TRT_BUILDER_RUNTIME_DLLS ${_optional_runtime})
+endif()
+list(REMOVE_DUPLICATES CVINFER_TRT_BUILDER_RUNTIME_DLLS)
+# Remove only obsolete SDK DLLs from this build's own staging directory.
+file(GLOB _old_builder_runtime
+  "${CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY}/nvinfer*.dll"
+  "${CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY}/nvonnxparser*.dll"
+  "${CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY}/cudart64_*.dll"
+  "${CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY}/cublas*64_*.dll"
+  "${CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY}/cudnn*.dll"
+  "${CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY}/nvrtc*.dll")
+foreach(_selected IN LISTS CVINFER_TRT_BUILDER_RUNTIME_DLLS)
+  get_filename_component(_name "${_selected}" NAME)
+  list(REMOVE_ITEM _old_builder_runtime "${CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY}/${_name}")
+endforeach()
 
 function(cvinfer_copy_builder_runtime TARGET_NAME)
   if(WIN32)
+    if(_old_builder_runtime)
+      add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -f ${_old_builder_runtime}
+        COMMAND_EXPAND_LISTS VERBATIM)
+    endif()
     add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E make_directory "${CVINFER_TRT_BUILDER_RUNTIME_DIRECTORY}"
       COMMAND ${CMAKE_COMMAND} -E copy_if_different

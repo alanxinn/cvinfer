@@ -18,7 +18,7 @@ namespace alanxinn.TensorRt;
 public static class TensorRtRuntime
 {
     private const string PackageVersion = "0.2.0-trt10";
-    private const string RuntimeArchiveName = "tensorrt10.16.1.11-cuda12.9-cudnn9.27-runtime-win-x64.zip";
+    private const string RuntimeArchiveName = "tensorrt10.16.1.11-cuda12.9-runtime-win-x64.zip";
     // No TRT 10 release archive is published by this branch. Never fall back
     // to the incompatible TRT 8 archive. A deployment can configure a mirror.
     private const string DefaultDownloadUrl = "";
@@ -30,6 +30,11 @@ public static class TensorRtRuntime
         "nvonnxparser_10.dll",
         "nvinfer_builder_resource_ptx_10.dll",
         "cudart64_12.dll"
+    };
+    private static readonly string[] OptionalFiles =
+    {
+        "cudnn64_9.dll", "cudnn_graph64_9.dll", "cublas64_12.dll", "cublasLt64_12.dll",
+        "nvrtc64_120_0.dll", "nvrtc-builtins64_129.dll"
     };
 
     private static readonly HttpClient HttpClient = CreateHttpClient();
@@ -52,6 +57,11 @@ public static class TensorRtRuntime
     public static bool DisableAutoDownload { get; set; } =
         string.Equals(Environment.GetEnvironmentVariable("ALANXINN_TENSORRT_NO_DOWNLOAD"), "1", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(Environment.GetEnvironmentVariable("ALANXINN_TENSORRT_NO_DOWNLOAD"), "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Include cuDNN/cuBLAS/NVRTC when a custom plugin or deprecated layer needs them.</summary>
+    public static bool IncludeOptionalLibraries { get; set; } =
+        string.Equals(Environment.GetEnvironmentVariable("ALANXINN_TENSORRT_OPTIONAL_LIBRARIES"), "1", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Environment.GetEnvironmentVariable("ALANXINN_TENSORRT_OPTIONAL_LIBRARIES"), "true", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsInitialized => initializedDirectory != null;
 
@@ -95,7 +105,7 @@ public static class TensorRtRuntime
 
             SetDllDirectory(localDirectory);
             // The inference wrapper also calls SetDllDirectory. Keep builder
-            // resource/cuDNN component discovery valid when both APIs share
+            // resource/optional-library discovery valid when both APIs share
             // one process and the most recently selected DLL directory changes.
             var processPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
             if (!processPath.Split(Path.PathSeparator).Contains(localDirectory, StringComparer.OrdinalIgnoreCase))
@@ -147,11 +157,14 @@ public static class TensorRtRuntime
         foreach (var pattern in new[] { "nvinfer_10.dll", "nvinfer_plugin_10.dll", "nvonnxparser_10.dll", "nvinfer_builder_resource*_10.dll" })
             foreach (var source in Directory.GetFiles(trtBin, pattern))
                 File.Copy(source, Path.Combine(cache, Path.GetFileName(source)), true);
-        foreach (var pattern in new[] { "cudart64_12.dll", "cublas*64_12.dll", "nvrtc*.dll" })
+        var cudaPatterns = IncludeOptionalLibraries
+            ? new[] { "cudart64_12.dll", "cublas*64_12.dll", "nvrtc*.dll" }
+            : new[] { "cudart64_12.dll" };
+        foreach (var pattern in cudaPatterns)
             foreach (var source in Directory.GetFiles(cudaBin, pattern))
                 File.Copy(source, Path.Combine(cache, Path.GetFileName(source)), true);
         var cudnnBin = Path.Combine(cudnn, "bin", "12.9", "x64");
-        if (Directory.Exists(cudnnBin))
+        if (IncludeOptionalLibraries && Directory.Exists(cudnnBin))
             foreach (var source in Directory.GetFiles(cudnnBin, "cudnn*64_9.dll"))
                 File.Copy(source, Path.Combine(cache, Path.GetFileName(source)), true);
         return ContainsRequiredRuntime(cache) ? cache : null;
@@ -197,9 +210,8 @@ public static class TensorRtRuntime
             foreach (var fileName in RequiredFiles)
                 if (!extractedFiles.Any(path => string.Equals(Path.GetFileName(path), fileName, StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidDataException("TensorRT runtime ZIP is missing " + fileName + ".");
-            // Keep architecture-specific builder resources and all cuDNN 9
-            // components. Copying only the main cuDNN DLL is insufficient.
-            foreach (var source in extractedFiles)
+            // Preserve resources; optional plugin libraries are not baseline dependencies.
+            foreach (var source in extractedFiles.Where(path => IncludeOptionalLibraries || !IsOptionalLibrary(path)))
                 File.Copy(source, Path.Combine(cacheDirectory, Path.GetFileName(source)), true);
 
             if (!ContainsRequiredRuntime(cacheDirectory))
@@ -221,7 +233,16 @@ public static class TensorRtRuntime
 
     private static bool ContainsRequiredRuntime(string directory)
     {
-        return Directory.Exists(directory) && RequiredFiles.All(fileName => File.Exists(Path.Combine(directory, fileName)));
+        return Directory.Exists(directory) && RequiredFiles.All(fileName => File.Exists(Path.Combine(directory, fileName))) &&
+               (!IncludeOptionalLibraries || OptionalFiles.All(fileName => File.Exists(Path.Combine(directory, fileName))));
+    }
+
+    private static bool IsOptionalLibrary(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.StartsWith("cudnn", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("cublas", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("nvrtc", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetCacheDirectory()
@@ -231,7 +252,8 @@ public static class TensorRtRuntime
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrWhiteSpace(localAppData))
             localAppData = Path.GetTempPath();
-        return Path.Combine(localAppData, "alanxinn", "TensorRtOnnxBuilder", PackageVersion, "win-x64");
+        return Path.Combine(localAppData, "alanxinn", "TensorRtOnnxBuilder", PackageVersion,
+                            IncludeOptionalLibraries ? "optional" : "minimal", "win-x64");
     }
 
     private static void AddCandidate(ICollection<string> candidates, string? path)

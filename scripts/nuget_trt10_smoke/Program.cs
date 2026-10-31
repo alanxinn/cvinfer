@@ -105,13 +105,24 @@ var runtimeRoot = Path.GetFullPath(Get("runtime"));
 var modules = Process.GetCurrentProcess().Modules.Cast<ProcessModule>()
     .Where(x => x.ModuleName.StartsWith("alanxinn_", StringComparison.OrdinalIgnoreCase) ||
                 x.ModuleName.StartsWith("nvinfer", StringComparison.OrdinalIgnoreCase) ||
-                x.ModuleName.StartsWith("nvonnxparser", StringComparison.OrdinalIgnoreCase))
+                x.ModuleName.StartsWith("nvonnxparser", StringComparison.OrdinalIgnoreCase) ||
+                x.ModuleName.StartsWith("cudnn", StringComparison.OrdinalIgnoreCase) ||
+                x.ModuleName.StartsWith("cublas", StringComparison.OrdinalIgnoreCase) ||
+                x.ModuleName.StartsWith("nvrtc", StringComparison.OrdinalIgnoreCase))
     .Select(x => x.FileName).ToArray();
 Require(modules.Any(x => Path.GetFileName(x).StartsWith("alanxinn_")), "No package native module loaded");
 foreach (var module in modules)
+{
     Require(module.StartsWith(outputRoot, StringComparison.OrdinalIgnoreCase) ||
             module.StartsWith(runtimeRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase),
             "Native module was loaded outside package output / runtime ZIP: " + module);
+    var name = Path.GetFileName(module);
+    if (!input.GetProperty("optional_libraries").GetBoolean())
+        Require(!name.StartsWith("cudnn", StringComparison.OrdinalIgnoreCase) &&
+                !name.StartsWith("cublas", StringComparison.OrdinalIgnoreCase) &&
+                !name.StartsWith("nvrtc", StringComparison.OrdinalIgnoreCase),
+                "A minimal-runtime test unexpectedly loaded an optional library: " + module);
+}
 report["native_modules"] = modules;
 report["status"] = "PASS"; report["seconds"] = watch.Elapsed.TotalSeconds;
 File.WriteAllText(Get("report"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));

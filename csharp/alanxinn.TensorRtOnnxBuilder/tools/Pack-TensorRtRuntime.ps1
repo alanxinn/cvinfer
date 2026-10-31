@@ -3,7 +3,10 @@ param(
     [string] $SourceDirectory,
 
     [Parameter(Mandatory = $true)]
-    [string] $OutputZip
+    [string] $OutputZip,
+    [string[]] $CudaArchitectures = @('89'),
+    [switch] $AllArchitectures,
+    [switch] $IncludeOptionalLibraries
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,6 +19,18 @@ $requiredFiles = @(
 )
 
 $source = (Resolve-Path -LiteralPath $SourceDirectory).Path
+if ($AllArchitectures) {
+    $resources = @(Get-ChildItem -LiteralPath $source -Filter 'nvinfer_builder_resource_sm*_10.dll' -File | Select-Object -ExpandProperty Name)
+    if ($resources.Count -eq 0) { throw 'No architecture-specific builder resources found' }
+    $requiredFiles += $resources
+} else {
+    if ($CudaArchitectures.Count -eq 0) { throw 'Specify at least one builder SM architecture' }
+    foreach ($architecture in $CudaArchitectures) {
+        if ($architecture -notmatch '^\d+$') { throw "Invalid SM architecture: $architecture" }
+        $requiredFiles += "nvinfer_builder_resource_sm${architecture}_10.dll"
+    }
+}
+$requiredFiles = @($requiredFiles | Select-Object -Unique)
 $staging = Join-Path ([System.IO.Path]::GetTempPath()) ('tensorrt-runtime-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $staging | Out-Null
 try {
@@ -27,11 +42,22 @@ try {
         Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $staging $fileName)
     }
 
-    # Architecture-specific builder resources and cuDNN 9 component DLLs must
-    # travel together. SourceDirectory can be CMake's builder_runtime directory.
-    foreach ($pattern in @('nvinfer_builder_resource*_10.dll', 'cublas*64_12.dll', 'cudnn*64_9.dll', 'nvrtc*.dll')) {
-        Get-ChildItem -LiteralPath $source -Filter $pattern -File | Copy-Item -Destination $staging -Force
+    # These libraries are dynamically needed by specific plugins/legacy layers,
+    # not by the project's standard YOLO/RF-DETR/SAM3/DINOv3 paths.
+    if ($IncludeOptionalLibraries) {
+        foreach ($fileName in @('cudnn64_9.dll', 'cudnn_graph64_9.dll', 'cublas64_12.dll', 'cublasLt64_12.dll', 'nvrtc64_120_0.dll', 'nvrtc-builtins64_129.dll')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $source $fileName) -PathType Leaf)) {
+                throw "Optional library missing: $fileName. Stage with -IncludeOptionalLibraries first."
+            }
+        }
+        foreach ($pattern in @('cublas*64_12.dll', 'cudnn*64_9.dll', 'nvrtc*.dll')) {
+            Get-ChildItem -LiteralPath $source -Filter $pattern -File | Copy-Item -Destination $staging -Force
+        }
     }
+    $selectedArchitectures = @($requiredFiles | ForEach-Object { if ($_ -match '^nvinfer_builder_resource_sm(\d+)_10\.dll$') { $Matches[1] } })
+    [ordered]@{ format = 'cvinfer-trt10-runtime-v2'; architectures = $selectedArchitectures; allArchitectures = [bool]$AllArchitectures;
+        optionalLibraries = [bool]$IncludeOptionalLibraries; dlls = @(Get-ChildItem -LiteralPath $staging -Filter '*.dll' | Select-Object -ExpandProperty Name) } |
+        ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $staging 'runtime-manifest.json') -Encoding UTF8
     $outputDirectory = Split-Path -Parent $OutputZip
     if ($outputDirectory) { New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null }
     if (Test-Path -LiteralPath $OutputZip) { Remove-Item -LiteralPath $OutputZip -Force }

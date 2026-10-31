@@ -3,7 +3,9 @@ param(
     [ValidateSet('trt10-release', 'trt10-cuda-release')]
     [string]$Preset = 'trt10-release',
     [int]$Jobs = 4,
-    [string]$CudaArchitectures = '89'
+    [string]$CudaArchitectures = '89',
+    [string]$BuilderArchitectures = '',
+    [switch]$IncludeOptionalLibraries
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -14,7 +16,10 @@ if (-not $vs) { throw 'Visual Studio C++ Build Tools were not found.' }
 $env:PATH = (Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja') + ';' + $env:PATH
 Push-Location $repo
 try {
-    & cmake --preset $Preset "-DCMAKE_CUDA_ARCHITECTURES=$CudaArchitectures"
+    if (-not $BuilderArchitectures) { $BuilderArchitectures = $CudaArchitectures }
+    $optionalLibraries = if ($IncludeOptionalLibraries) { 'ON' } else { 'OFF' }
+    & cmake --preset $Preset "-DCMAKE_CUDA_ARCHITECTURES=$CudaArchitectures" `
+        "-DCVINFER_TRT_BUILDER_ARCHITECTURES=$BuilderArchitectures" "-DCVINFER_TRT_INCLUDE_OPTIONAL_LIBRARIES=$optionalLibraries"
     if ($LASTEXITCODE -ne 0) { throw "CMake configure failed: $LASTEXITCODE" }
     & cmake --build --preset "build-$Preset" --parallel $Jobs
     if ($LASTEXITCODE -ne 0) { throw "CMake build failed: $LASTEXITCODE" }

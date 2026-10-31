@@ -68,11 +68,14 @@ YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异�
 
 - `alanxinn.CvinferSharp.TensorRT10.0.2.0-trt10.nupkg`：推理封装与 native/runtime。
 - `alanxinn.TensorRtOnnxBuilder.TensorRT10.0.2.0-trt10.nupkg`：ONNX builder 封装与 native builder。
-- `tensorrt10.16.1.11-cuda12.9-cudnn9.27-runtime-win-x64.zip`：完整 builder 环境，含各架构 resource DLL 和 cuDNN 9 组件。
+- `tensorrt10.16.1.11-cuda12.9-sm89-runtime-win-x64.zip`：默认精简 builder 环境，仅含公共依赖、PTX 和 SM89 resource。
 - `artifacts.json`：产物大小和 SHA256。
 
 两个 NuGet 支持 net472/net6.0/net8.0；程序集名和 C# 命名空间不变。
 新包通过 `.TensorRT10` 后缀与其他 TensorRT 大版本区分，Denglin 包名不变。
+默认不包含 cuDNN/cuBLAS/NVRTC；特定插件需要时加 `-IncludeOptionalLibraries`。
+其他显卡用 `-CudaArchitectures 86,89` 指定目标 SM；完整架构分发加 `-AllArchitectures`。
+具体 DLL 白名单及本次静态检查范围见 [DLL 依赖清单](TRT10_DLL_DEPENDENCIES.md)。
 将 ZIP 解压后设置 `ALANXINN_TENSORRT_RUNTIME_DIR` 为包含 DLL 的目录即可使用 builder。
 无需在线下载环境；本机仍需 NVIDIA 驱动。NuGet 打包使用不依赖私有 CUDA DLL 的 public native 构建。
 
@@ -87,7 +90,7 @@ YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异�
 - `bin/alanxinn_cvinfer_trt.dll`：原生推理 API。
 - `bintrt`：`nvinfer_10.dll`、`nvinfer_plugin_10.dll`、`cudart64_12.dll`、OpenCV，及可选私有 CUDA DLL。
 - `tensorrt_builder/alanxinn_tensorrt_builder.dll`：ONNX builder。
-- `builder_runtime`：parser、builder resource DLL、CUDA 库及 cuDNN 9 的全部组件。
+- `builder_runtime`：parser、PTX 和目标 SM 的 builder resource、CUDA12 runtime；可选库显式开启后才包含。
 
 运行原生 demo 时将 `bintrt` 加到当前进程 PATH。C# demo 默认引用本分支源码，
 不会误用 NuGet 中旧的 TRT 8 native DLL。公开 NuGet 打包仍禁止私有 CUDA DLL 依赖。
@@ -95,7 +98,7 @@ YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异�
 `ALANXINN_TENSORRT_RUNTIME_URL`，并建议配置 `ALANXINN_TENSORRT_RUNTIME_SHA256`。
 `Pack-TensorRtRuntime.ps1` 可从 `builder_runtime` 生成匹配 ZIP。
 
-TensorRT 10 本身不链接外部 cuDNN；SDK 环境按本次要求同时部署 cuDNN 9.27。
+TensorRT 10 的当前项目路径不要求 cuDNN；特定插件或弃用算子所需 cuDNN 9.27 及依赖可按需部署。
 旧 TRT 8 engine、CUDA 11 DLL、cuDNN 8 DLL 不可用于当前构建，需要重新生成 engine。
 
 接口迁移依据：[NVIDIA TensorRT 8 → 10 C++ 迁移说明](https://docs.nvidia.com/deeplearning/tensorrt/10.x.x/api/tensorrt-8x-to-10x-c-api.html)。

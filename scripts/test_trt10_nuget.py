@@ -41,10 +41,14 @@ def runtime_versions(runtime):
     cuda.cudaRuntimeGetVersion.argtypes = [c.POINTER(c.c_int)]
     cuda.cudaRuntimeGetVersion.restype = c.c_int
     assert cuda.cudaRuntimeGetVersion(c.byref(version)) == 0
-    cudnn = c.WinDLL(str(runtime / "cudnn64_9.dll")); cudnn.cudnnGetVersion.restype = c.c_size_t
     trt = c.WinDLL(str(runtime / "nvinfer_10.dll")); trt.getInferLibVersion.restype = c.c_int
-    result = {"cudaRuntimeGetVersion": version.value, "cudnnGetVersion": cudnn.cudnnGetVersion(), "getInferLibVersion": trt.getInferLibVersion()}
-    assert list(result.values()) == [12090, 92700, 101601], result
+    cudnn_version = None
+    if (runtime / "cudnn64_9.dll").is_file():
+        cudnn = c.WinDLL(str(runtime / "cudnn64_9.dll")); cudnn.cudnnGetVersion.restype = c.c_size_t
+        cudnn_version = cudnn.cudnnGetVersion()
+        assert cudnn_version == 92700
+    result = {"cudaRuntimeGetVersion": version.value, "cudnnGetVersion": cudnn_version, "getInferLibVersion": trt.getInferLibVersion()}
+    assert result["cudaRuntimeGetVersion"] == 12090 and result["getInferLibVersion"] == 101601, result
     directory.close()
     return result
 
@@ -52,6 +56,7 @@ def runtime_versions(runtime):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--packages", type=Path, default=Path("package/TensorRT10"))
+    p.add_argument("--runtime-zip", type=Path, help="Deployment ZIP selected by Pack-Trt10.ps1")
     p.add_argument("--output", type=Path, default=Path("cache/nuget-trt10-validation"))
     a = p.parse_args()
     repo = Path(__file__).resolve().parents[1]
@@ -81,18 +86,25 @@ def main():
                 assert "runtimes/win-x64/native/alanxinn_tensorrt_builder.dll" in names
         packages[name] = fields["version"]
         inventory.append({"package_id": name, "version": fields["version"], "file": str(path), "bytes": path.stat().st_size, "sha256": sha256(path)})
-    runtime_zip = feed / "tensorrt10.16.1.11-cuda12.9-cudnn9.27-runtime-win-x64.zip"
-    runtime = output / "runtime"
-    runtime.mkdir(exist_ok=True)
+    runtime_zip = a.runtime_zip.resolve() if a.runtime_zip else feed / "tensorrt10.16.1.11-cuda12.9-sm89-runtime-win-x64.zip"
+    runtime_hash = sha256(runtime_zip)
+    # Never let DLLs extracted from an earlier full SDK mask missing minimal dependencies.
+    runtime = output / "runtime" / runtime_hash[:16]
+    runtime.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(runtime_zip) as archive:
+        runtime_manifest = json.loads(archive.read("runtime-manifest.json").decode("utf-8-sig"))
         for item in archive.infolist():
             target = (runtime / item.filename).resolve()
             if not target.is_relative_to(runtime.resolve()): raise ValueError("Unsafe runtime ZIP path")
             archive.extract(item, runtime)
-        names = {Path(x).name for x in archive.namelist()}
-        for dll in ["nvinfer_10.dll", "nvinfer_plugin_10.dll", "nvonnxparser_10.dll", "nvinfer_builder_resource_sm89_10.dll", "cudart64_12.dll", "cudnn64_9.dll"]:
+        names = {Path(x).name for x in archive.namelist() if x.endswith(".dll")}
+        assert names == set(runtime_manifest["dlls"])
+        assert any(x.startswith("nvinfer_builder_resource_sm") for x in names)
+        for dll in ["nvinfer_10.dll", "nvinfer_plugin_10.dll", "nvonnxparser_10.dll", "nvinfer_builder_resource_ptx_10.dll", "cudart64_12.dll"]:
             assert dll in names, dll
-    inventory.append({"file": str(runtime_zip), "bytes": runtime_zip.stat().st_size, "sha256": sha256(runtime_zip), "dlls": sorted(names)})
+        if not runtime_manifest["optionalLibraries"]:
+            assert not any(x.startswith(("cudnn", "cublas", "nvrtc")) for x in names)
+    inventory.append({"file": str(runtime_zip), "bytes": runtime_zip.stat().st_size, "sha256": runtime_hash, "dlls": sorted(names)})
     # A package rebuilt with the same NuGet version must not silently reuse
     # an older extracted package or old native files from a previous run.
     fingerprint = hashlib.sha256("".join(x["sha256"] for x in inventory[:2]).encode()).hexdigest()[:16]
@@ -155,7 +167,8 @@ def main():
     results = []
     for case in tests:
         name = case["name"]
-        request = {**case, "image": str(image), "width": 810, "height": 1080, "runtime": str(runtime), "report": str(output / (name + ".json"))}
+        request = {**case, "image": str(image), "width": 810, "height": 1080, "runtime": str(runtime),
+                   "optional_libraries": runtime_manifest["optionalLibraries"], "report": str(output / (name + ".json"))}
         spec = output / (name + "-input.json"); spec.write_text(json.dumps(request))
         print("Testing NuGet", name, flush=True)
         try:

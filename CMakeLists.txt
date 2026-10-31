@@ -175,18 +175,13 @@ list(FILTER CVINFER_OPENCV_RELEASE_DLLS EXCLUDE REGEX "d\\.dll$")
 
 # Keep only the runtime set required by the public TensorRT inference DLL in
 # bintrt.  The ONNX builder has a separate deployment directory below, so its
-# parser/plugin/cuBLAS/cuDNN dependencies must not leak into the inference
+# parser/builder resources and optional libraries must not leak into the inference
 # runtime or the CvinferSharp package.
 file(GLOB CVINFER_TRT_RUNTIME_DLLS CONFIGURE_DEPENDS
   ${CVINFER_OPENCV_RELEASE_DLLS}
-  "${TENSORRT_ROOT}/lib/nvinfer.dll"
-  "${TENSORRT_ROOT}/bin/nvinfer.dll"
   "${TENSORRT_ROOT}/bin/nvinfer_10.dll"
   "${TENSORRT_ROOT}/bin/nvinfer_plugin_10.dll"
-  "${TENSORRT_ROOT}/lib/zlibwapi.dll"
-  "${TENSORRT_ROOT}/bin/zlibwapi.dll"
-  "${CUDA_ROOT}/bin/cudart64_*.dll"
-  "${CUDA_ROOT}/bin/zlibwapi.dll")
+  "${CUDA_ROOT}/bin/cudart64_12.dll")
 list(FILTER CVINFER_TRT_RUNTIME_DLLS EXCLUDE REGEX "d\\.dll$")
 list(REMOVE_DUPLICATES CVINFER_TRT_RUNTIME_DLLS)
 

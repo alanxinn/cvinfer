@@ -91,13 +91,13 @@ alanxinn_cvinfer_sam3.dll
 alanxinn_cvinfer_dinov3.dll
 nvinfer_10.dll
 nvinfer_plugin_10.dll
-cudart64_*.dll
+cudart64_12.dll
 opencv_world*.dll
 ```
 
-`nvonnxparser_10.dll`、TRT builder resource、cuBLAS、cuDNN 等 builder 依赖不在
-该推理包中；它们由 `alanxinn.TensorRtOnnxBuilder.TensorRT10` 的 `TensorRtRuntime`
-单独提供。若某个已构建 engine 依赖额外 TensorRT plugin，应用还需自行部署
+`nvonnxparser_10.dll`、TRT builder resource 不在该推理包中，由 builder 的 `TensorRtRuntime`
+单独提供。cuBLAS/cuDNN/NVRTC 是特定插件或旧算子的可选依赖，默认环境也不包含，
+需要时显式启用 `IncludeOptionalLibraries`。若某个已构建 engine 依赖额外 TensorRT plugin，应用还需自行部署
 对应 plugin DLL。
 
 `alanxinn.CvinferSharp.Denglin`（Denglin 包）包含：

@@ -2,6 +2,9 @@
 
 日期：2026-10-30。平台：Windows x64 / RTX 4060 8GB。
 
+2026-10-31 已将后续打包配置改为精简依赖；本页保留原完整包的历史实测结果，
+不表示精简包已重新验证。最新配置见 [DLL 依赖清单](TRT10_DLL_DEPENDENCIES.md)。
+
 已编译 public native、两个 NuGet 的 net472/net6.0/net8.0 程序集，生成完整环境 ZIP。
 通过本地 feed 的 **PackageReference** 构建 .NET 8 消费项目；没有项目引用、手动复制 native DLL，
 实际加载路径均在消费项目输出或环境 ZIP 解压目录。编译零警告、零错误。

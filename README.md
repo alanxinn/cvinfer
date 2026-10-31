@@ -24,17 +24,17 @@ DINOv3 的图像推理、特征输出和验证范围见 [DINOv3 说明](dinov3/R
 | 组件 | 版本 |
 | --- | --- |
 | CUDA Toolkit | 12.9.86 |
-| cuDNN | 9.27.0（`cudnn64_9.dll` 及其组件） |
+| cuDNN（可选插件依赖） | 9.27.0（默认不打包） |
 | TensorRT | 10.16.1.11（CUDA 12） |
 | Denglin SDK | `E:/denglin-hamming/sdk`（启用 Denglin 时） |
 
 需使用与 CUDA、TensorRT 和 GPU 架构匹配的驱动及运行库。
 
 推理 NuGet 包包含对应的 native API 和运行时 DLL，应用只需安装匹配的
-NVIDIA/Denglin 驱动。`alanxinn.TensorRtOnnxBuilder` 的完整 TensorRT parser、
-plugin、cuBLAS 和 cuDNN 运行库由 `TensorRtRuntime` 单独配置或按需下载，
-保存在独立的 `builder_runtime` 目录。TRT 10 本身不依赖外部 cuDNN；
-为本项目指定的环境同时部署 cuDNN 9.27 组件。详细步骤见 [TRT10 适配说明](docs/TRT10.md)。
+NVIDIA/Denglin 驱动。ONNX builder 的 parser、PTX 和目标 SM resource 由
+`TensorRtRuntime` 单独配置或按需下载，保存在独立的 `builder_runtime` 目录。
+默认不打包 cuDNN/cuBLAS/NVRTC，仅特定插件需要时显式开启。
+详细清单见 [TRT10 DLL 依赖](docs/TRT10_DLL_DEPENDENCIES.md)。
 
 ## NuGet Packages
 

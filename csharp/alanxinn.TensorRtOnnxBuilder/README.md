@@ -48,11 +48,12 @@ INT8 适用于包含 Q/DQ 节点的 ONNX。
 ## Runtime
 
 本分支优先发现 `ALANXINN_TENSORRT_RUNTIME_DIR`、本地 CMake 的 `builder_runtime`，
-或按 `TENSORRT_ROOT` / `CUDA_PATH` / `CUDNN_ROOT` 从已安装 SDK 生成缓存。
+或按 `TENSORRT_ROOT` / `CUDA_PATH` 从已安装 SDK 生成缓存，默认不复制 cuDNN/cuBLAS/NVRTC。
+特定插件确实需要时设置 `TensorRtRuntime.IncludeOptionalLibraries = true`，此时才使用 `CUDNN_ROOT`。
 网络下载必须显式配置匹配 TRT 10 的 ZIP URL；没有默认已发布的 TRT 10 下载包。缓存位于：
 
 ```text
-%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.2.0-trt10\win-x64
+%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.2.0-trt10\minimal\win-x64
 ```
 
 可配置：
@@ -73,3 +74,4 @@ dotnet pack .\csharp\alanxinn.TensorRtOnnxBuilder\alanxinn.TensorRtOnnxBuilder.c
 ```
 
 详细转换命令见同目录 Demo README。
+默认打包目标为 SM89，其他架构及可选库配置见 [DLL 清单](../../docs/TRT10_DLL_DEPENDENCIES.md)。

@@ -81,9 +81,7 @@
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\nvinfer_10.dll"
                                   Condition="Exists('$(NativeTrtRuntimeSource)\nvinfer_10.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\nvinfer_plugin_10.dll" />
-      <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\cudart64_*.dll" />
-      <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\zlibwapi.dll"
-                                  Condition="Exists('$(NativeTrtRuntimeSource)\zlibwapi.dll')" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\cudart64_12.dll" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\opencv_world*.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\cudart64_*d.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\opencv_world*d.dll" />
@@ -136,9 +134,7 @@
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer_10.dll"
                                   Condition="Exists('$(NativeRuntimeDestination)\nvinfer_10.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer_plugin_10.dll" />
-      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\cudart64_*.dll" />
-      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\zlibwapi.dll"
-                                  Condition="Exists('$(NativeRuntimeDestination)\zlibwapi.dll')" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\cudart64_12.dll" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\cudart64_*d.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\opencv_world*d.dll" />

@@ -3,7 +3,7 @@ param(
     [ValidateSet('trt10-release', 'trt10-cuda-release')]
     [string]$Preset = 'trt10-release',
     [int]$Jobs = 4,
-    [string]$CudaArchitectures = '89',
+    [string]$CudaArchitectures = '86;89;120',
     [string]$BuilderArchitectures = '',
     [switch]$IncludeOptionalLibraries
 )

@@ -21,8 +21,9 @@ void Build(string source, string destination, bool half)
         Precision = half ? TensorRtPrecision.Fp16 : TensorRtPrecision.Fp32,
         EnableTf32 = false, WorkspaceMiB = 2048 });
     Require(File.Exists(destination) && new FileInfo(destination).Length > 0, "Builder returned an empty engine");
-    Require(Path.GetFullPath(TensorRtRuntime.InitializedDirectory!) == Path.GetFullPath(Get("runtime")),
-            "Builder did not use the extracted runtime ZIP");
+    Require(Path.GetFullPath(TensorRtRuntime.InitializedDirectory!).StartsWith(Path.GetFullPath(Get("runtime")) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase),
+            "Builder did not automatically assemble the NuGet runtime dependencies");
+    report["runtime_directory"] = TensorRtRuntime.InitializedDirectory;
 }
 if (mode == "model")
 {

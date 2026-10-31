@@ -9,10 +9,10 @@
     <AssemblyName>alanxinn.TensorRtOnnxBuilder</AssemblyName>
     <PackageId>alanxinn.TensorRtOnnxBuilder.TensorRT10</PackageId>
 
-    <Version>0.2.0-trt10</Version>
+    <Version>0.2.1-trt10</Version>
     <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
-    <InformationalVersion>0.2.0-trt10</InformationalVersion>
+    <FileVersion>0.2.1.0</FileVersion>
+    <InformationalVersion>0.2.1-trt10</InformationalVersion>
 
     <Authors>alanxinn</Authors>
     <Company>alanxinn</Company>
@@ -21,7 +21,7 @@
     <AssemblyTitle>alanxinn.TensorRtOnnxBuilder</AssemblyTitle>
     <AssemblyDescription>C# P/Invoke wrapper for the native TensorRT ONNX builder DLL.</AssemblyDescription>
     <PackageTags>TensorRT;ONNX;engine;builder;CUDA;CSharp;PInvoke;NvOnnxParser</PackageTags>
-    <PackageReleaseNotes>TensorRT 10.16 / CUDA 12.9 builder with local runtime discovery and an optional deployment ZIP URL.</PackageReleaseNotes>
+    <PackageReleaseNotes>TensorRT 10.16 / CUDA 12.9 builder with automatic RTX30/40/50 runtime dependencies, verified resource reassembly and no separate SDK installation.</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
@@ -37,7 +37,20 @@
     <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == '' and Exists('$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\tensorrt_builder\alanxinn_tensorrt_builder.dll')">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-private-cuda-release\tensorrt_builder</NativeRuntimeSource>
     <NativeRuntimeSource Condition="'$(NativeRuntimeSource)' == ''">$(MSBuildProjectDirectory)\..\..\build\ninja-msvc-release\tensorrt_builder</NativeRuntimeSource>
     <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64</NativeRuntimeDestination>
+    <BuilderRuntimeSource Condition="'$(BuilderRuntimeSource)' == ''">$(MSBuildProjectDirectory)\..\..\build\trt10-release\builder_runtime</BuilderRuntimeSource>
+    <BundleTensorRtRuntime Condition="'$(BundleTensorRtRuntime)' == ''">false</BundleTensorRtRuntime>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(BundleTensorRtRuntime)' == 'true'">
+    <PackageReference Include="alanxinn.TensorRtRuntime.Core.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.SM86.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.SM89.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part1.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part2.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part3.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.SM120.Part1.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.SM120.Part2.TensorRT10" Version="[$(Version)]" />
+  </ItemGroup>
 
   <ItemGroup>
     <Reference Include="System.IO.Compression.FileSystem"
@@ -48,6 +61,8 @@
     <None Include="README.md"
           Pack="true"
           PackagePath="README.md" />
+    <None Include="..\alanxinn.CvinferSharp\alanxinn.CvinferSharp.targets" Pack="true"
+          PackagePath="buildTransitive\alanxinn.TensorRtOnnxBuilder.TensorRT10.targets" Visible="false" />
     <None Include="..\..\LICENSE.txt"
           Pack="true"
           PackagePath="LICENSE.txt"
@@ -60,6 +75,7 @@
     <ItemGroup>
       <TensorRtBuilderNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll"
                                          Condition="Exists('$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll')" />
+      <TensorRtBuilderNativeRuntimeFiles Include="$(BuilderRuntimeSource)\nvonnxparser_10.dll" />
 
       <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\alanxinn_tensorrt_builder.dll" />
       <TensorRtBuilderNativeStaleFiles Include="$(NativeRuntimeDestination)\nvinfer*.dll" />
@@ -98,6 +114,7 @@
     <ItemGroup>
       <TensorRtBuilderNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_tensorrt_builder.dll"
                                          Condition="Exists('$(NativeRuntimeDestination)\alanxinn_tensorrt_builder.dll')" />
+      <TensorRtBuilderNativePackageFiles Include="$(NativeRuntimeDestination)\nvonnxparser_10.dll" />
       <TfmSpecificPackageFile Include="@(TensorRtBuilderNativePackageFiles)">
         <PackagePath>runtimes\win-x64\native\%(Filename)%(Extension)</PackagePath>
       </TfmSpecificPackageFile>
@@ -110,7 +127,17 @@
   <Target Name="ValidateTensorRtBuilderNativeRuntime"
           BeforeTargets="Pack"
           Condition="'$(TargetFramework)' == 'net8.0'">
+    <Error Text="Use scripts/Pack-Trt10.ps1 to pack with RTX30/40/50 runtime dependencies."
+           Condition="'$(BundleTensorRtRuntime)' != 'true'" />
     <Error Text="alanxinn_tensorrt_builder.dll was not found in '$(NativeRuntimeSource)'. Build the C++ TensorRT builder first."
            Condition="!Exists('$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll')" />
+  </Target>
+  <Target Name="ValidateTensorRtRuntimeDependencies" BeforeTargets="GenerateNuspec">
+    <Error Text="Use scripts/Pack-Trt10.ps1 so all RTX30/40/50 runtime dependencies are included."
+           Condition="'$(BundleTensorRtRuntime)' != 'true'" />
+    <Error Text="Build the public native ONNX builder before packing."
+           Condition="!Exists('$(NativeRuntimeSource)\alanxinn_tensorrt_builder.dll')" />
+    <Error Text="The TensorRT10 ONNX parser is missing from BuilderRuntimeSource."
+           Condition="!Exists('$(BuilderRuntimeSource)\nvonnxparser_10.dll')" />
   </Target>
 </Project>

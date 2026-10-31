@@ -31,14 +31,14 @@ DINOv3 的图像推理、特征输出和验证范围见 [DINOv3 说明](dinov3/R
 需使用与 CUDA、TensorRT 和 GPU 架构匹配的驱动及运行库。
 
 推理 NuGet 包包含对应的 native API 和运行时 DLL，应用只需安装匹配的
-NVIDIA/Denglin 驱动。ONNX builder 的 parser、PTX 和目标 SM resource 由
-`TensorRtRuntime` 单独配置或按需下载，保存在独立的 `builder_runtime` 目录。
+NVIDIA/Denglin 驱动。新版 TensorRT NuGet 自动还原 Core 与 RTX 30/40/50 资源依赖，
+ONNX builder 首次使用自动合并 PTX/SM120 大文件，无需用户安装 SDK 或下载 ZIP。
 默认不打包 cuDNN/cuBLAS/NVRTC，仅特定插件需要时显式开启。
 详细清单见 [TRT10 DLL 依赖](docs/TRT10_DLL_DEPENDENCIES.md)。
 
 ## NuGet Packages
 
-本分支的 TensorRT 包版本为 `0.2.0-trt10`，应从源码构建；下表保留已发布版本信息，
+本分支的 TensorRT 包版本为 `0.2.1-trt10`，应从源码构建；下表保留已发布版本信息，
 已发布的 `0.1.x` TensorRT 包对应旧 SDK，不能与本分支的 native DLL 混用。
 
 TRT10 本地包名为 `alanxinn.CvinferSharp.TensorRT10` 和 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，
@@ -95,7 +95,7 @@ alanxinn.CvinferDemo.exe `
 ```
 
 preset 已配置本机 `CUDA_ROOT`、`TENSORRT_ROOT`、`CUDNN_ROOT`、`OpenCV_DIR`。
-默认 CUDA 架构为 RTX 4060 的 SM89；其他 GPU 使用 `-CudaArchitectures` 覆盖。
+默认 CUDA 架构为 SM86/SM89/SM120，覆盖 RTX 30/40/50；每个 engine 应在目标显卡上构建。
 Denglin 为可选后端，需要显式启用 `BUILD_DENGLIN_BACKEND`。
 构建产物位于：
 

@@ -31,7 +31,7 @@
         "CUDNN_ROOT": "C:/Program Files/NVIDIA/CUDNN/v9.27",
         "BUILD_CVINFER_DLL": "ON",
         "BUILD_TRT_ONNX_BUILDER_DLL": "ON",
-        "CMAKE_CUDA_ARCHITECTURES": "89",
+        "CMAKE_CUDA_ARCHITECTURES": "86;89;120",
         "OpenCV_DIR": "E:/opencv/build/x64/vc16/lib"
       },
       "environment": {

@@ -2,7 +2,7 @@
 param(
     [string]$OutputDirectory = 'package/TensorRT10',
     [string]$Python = '',
-    [string[]]$CudaArchitectures = @('89'),
+    [string[]]$CudaArchitectures = @('86', '89', '120'),
     [switch]$AllArchitectures,
     [switch]$IncludeOptionalLibraries,
     [switch]$SkipNativeBuild,
@@ -13,18 +13,30 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 $logs = Join-Path $output 'logs'
+$projectMetadata = [xml](Get-Content -LiteralPath (Join-Path $repo 'csharp/alanxinn.CvinferSharp/alanxinn.CvinferSharp.csproj') -Raw)
+$version = @($projectMetadata.Project.PropertyGroup.Version | Where-Object { $_ })[0]
 New-Item -ItemType Directory -Force -Path $logs | Out-Null
 Push-Location $repo
 try {
+    if (@('86', '89', '120') | Where-Object { $_ -notin $CudaArchitectures }) {
+        throw 'Public TensorRT10 NuGets must cover SM86, SM89 and SM120.'
+    }
+    if (-not $Python) {
+        $cachedPython = Join-Path $repo 'cache/trt10-python/Scripts/python.exe'
+        $Python = if (Test-Path -LiteralPath $cachedPython) { $cachedPython } else { (Get-Command python -ErrorAction Stop).Source }
+    }
     if (-not $SkipNativeBuild) {
         $builderArchitectures = if ($AllArchitectures) { 'ALL' } else { $CudaArchitectures -join ';' }
         & "$PSScriptRoot/Build-Trt10.ps1" -CudaArchitectures ($CudaArchitectures -join ';') `
             -BuilderArchitectures $builderArchitectures -IncludeOptionalLibraries:$IncludeOptionalLibraries *> (Join-Path $logs 'native-build.log')
         if ($LASTEXITCODE -ne 0) { throw 'TensorRT 10 native build failed; see native-build.log' }
     }
+    & $Python "$PSScriptRoot/pack_trt10_runtime_nugets.py" --output $output --version $version *> (Join-Path $logs 'runtime-nugets.log')
+    if ($LASTEXITCODE -ne 0) { throw "Runtime dependency packing failed; see $logs/runtime-nugets.log" }
     foreach ($project in @('alanxinn.CvinferSharp', 'alanxinn.TensorRtOnnxBuilder')) {
         Write-Host "Packing $project.TensorRT10"
-        & dotnet pack "csharp/$project/$project.csproj" -c Release -o $output *> (Join-Path $logs "$project-pack.log")
+        & dotnet pack "csharp/$project/$project.csproj" -c Release -o $output `
+            -p:BundleTensorRtRuntime=true "-p:RestoreAdditionalProjectSources=$output" *> (Join-Path $logs "$project-pack.log")
         if ($LASTEXITCODE -ne 0) { throw "NuGet pack failed: $project; see $logs" }
     }
     $profile = if ($AllArchitectures) { 'all-sm' } else { ($CudaArchitectures | ForEach-Object { "sm$_" }) -join '-' }
@@ -38,7 +50,9 @@ try {
     }
     if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw "Runtime ZIP missing: $archive" }
     # Do not list older full SDK archives left in this output directory as new artifacts.
-    $artifacts = @(@(Get-ChildItem -LiteralPath $output -Filter '*.nupkg' -File) + @(Get-Item -LiteralPath $archive) | ForEach-Object {
+    $currentPackages = @(Get-ChildItem -LiteralPath $output -Filter "*.$version.nupkg" -File)
+    if ($currentPackages | Where-Object { $_.Length -gt 250000000 }) { throw 'A NuGet package exceeds the 250MB publishing limit.' }
+    $artifacts = @($currentPackages + @(Get-Item -LiteralPath $archive) | ForEach-Object {
         [ordered]@{ file = $_.Name; bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     })
     [ordered]@{ tensorRT = '10.16.1.11'; cuda = '12.9'; optionalLibraries = [bool]$IncludeOptionalLibraries;
@@ -49,7 +63,7 @@ try {
             $cachedPython = Join-Path $repo 'cache/trt10-python/Scripts/python.exe'
             $Python = if (Test-Path -LiteralPath $cachedPython) { $cachedPython } else { (Get-Command python -ErrorAction Stop).Source }
         }
-        & $Python "$PSScriptRoot/test_trt10_nuget.py" --packages $output --runtime-zip $archive *> (Join-Path $logs 'nuget-tests.log')
+        & $Python "$PSScriptRoot/test_trt10_nuget.py" --packages $output --version $version *> (Join-Path $logs 'nuget-tests.log')
         if ($LASTEXITCODE -ne 0) { throw "NuGet model tests failed; see $logs/nuget-tests.log and cache/nuget-trt10-validation" }
     }
     Write-Host "TensorRT10 NuGet/runtime artifacts: $output"

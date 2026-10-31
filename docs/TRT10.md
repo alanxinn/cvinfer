@@ -18,8 +18,8 @@
 
 第二条使用本机已有的 `private/cuda_backend`，无需修改私有仓库源码。
 无私有源码时使用第一条，TensorRT 仍然在 NVIDIA GPU 上执行，前后处理在 CPU 上执行。
-脚本自动使用 VS 2022 Build Tools 和自带 Ninja。默认 SM89 对应本机 RTX 4060，
-其他显卡可传 `-CudaArchitectures 86` 等 CMake CUDA 架构值。
+脚本自动使用 VS 2022 Build Tools 和自带 Ninja。默认 SM86/SM89/SM120，覆盖 RTX 30/40/50 系列。
+这是运行库与原生代码的架构覆盖；engine 默认仍须在实际目标 GPU 上从 ONNX 构建。
 
 ## 下载和导出
 
@@ -66,21 +66,23 @@ YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异�
 
 产物保存在 `package/TensorRT10`：
 
-- `alanxinn.CvinferSharp.TensorRT10.0.2.0-trt10.nupkg`：推理封装与 native/runtime。
-- `alanxinn.TensorRtOnnxBuilder.TensorRT10.0.2.0-trt10.nupkg`：ONNX builder 封装与 native builder。
-- `tensorrt10.16.1.11-cuda12.9-sm89-runtime-win-x64.zip`：默认精简 builder 环境，仅含公共依赖、PTX 和 SM89 resource。
+- `alanxinn.CvinferSharp.TensorRT10.0.2.1-trt10.nupkg`：推理封装，自动依赖 Core runtime 包。
+- `alanxinn.TensorRtOnnxBuilder.TensorRT10.0.2.1-trt10.nupkg`：ONNX builder，自动依赖三代 GPU 的全部资源包。
+- `alanxinn.TensorRtRuntime.*.TensorRT10`：8 个自动还原的 runtime 依赖包，无需用户逐个安装。
+- `tensorrt10.16.1.11-cuda12.9-sm86-sm89-sm120-runtime-win-x64.zip`：可选备份，使用 NuGet 不需要它。
 - `artifacts.json`：产物大小和 SHA256。
 
 两个 NuGet 支持 net472/net6.0/net8.0；程序集名和 C# 命名空间不变。
 新包通过 `.TensorRT10` 后缀与其他 TensorRT 大版本区分，Denglin 包名不变。
 默认不包含 cuDNN/cuBLAS/NVRTC；特定插件需要时加 `-IncludeOptionalLibraries`。
-其他显卡用 `-CudaArchitectures 86,89` 指定目标 SM；完整架构分发加 `-AllArchitectures`。
+公开 NuGet 默认必须包含 SM86/SM89/SM120，完整服务器架构备份 ZIP 可加 `-AllArchitectures`。
 具体 DLL 白名单及本次静态检查范围见 [DLL 依赖清单](TRT10_DLL_DEPENDENCIES.md)。
-将 ZIP 解压后设置 `ALANXINN_TENSORRT_RUNTIME_DIR` 为包含 DLL 的目录即可使用 builder。
-无需在线下载环境；本机仍需 NVIDIA 驱动。NuGet 打包使用不依赖私有 CUDA DLL 的 public native 构建。
+新包全部发布后，只安装主 NuGet 即可自动还原依赖；不需要安装开发 SDK、解压 ZIP、设置 PATH 或 runtime URL。
+PTX/SM120 大文件首次初始化自动合并到用户缓存并校验 SHA256。
+Windows x64 仍需适配显卡的 NVIDIA 驱动和对应 .NET 运行时；标准包不依赖私有 CUDA DLL。
 
 打包脚本默认执行 `test_trt10_nuget.py`：从本地 feed 用 **PackageReference** 还原独立消费项目，
-核对三种 TFM、native 目录隔离和实际 DLL 来源；自动读取本地模型清单查找 engine/ONNX，
+核对三种 TFM、自动依赖、native 目录隔离和实际 DLL 来源；禁止回退到 SDK/外部 ZIP；自动查找 engine/ONNX，
 通过 NuGet builder 重建 YOLO11 检测引擎，再运行 YOLO11/26 det/seg/pose、RF-DETR det/seg、
 本地 SAM3.1 和可用 DINOv3。缺失引擎但有 ONNX 时自动构建。
 无真实 DINOv3 权重时仅运行明确标记为 synthetic 的算子检查。

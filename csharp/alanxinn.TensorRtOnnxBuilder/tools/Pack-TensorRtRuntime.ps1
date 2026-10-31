@@ -4,7 +4,7 @@ param(
 
     [Parameter(Mandatory = $true)]
     [string] $OutputZip,
-    [string[]] $CudaArchitectures = @('89'),
+    [string[]] $CudaArchitectures = @('86', '89', '120'),
     [switch] $AllArchitectures,
     [switch] $IncludeOptionalLibraries
 )

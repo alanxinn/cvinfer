@@ -9,10 +9,10 @@
     <AssemblyName>alanxinn.CvinferSharp</AssemblyName>
     <PackageId>alanxinn.CvinferSharp.TensorRT10</PackageId>
 
-    <Version>0.2.0-trt10</Version>
+    <Version>0.2.1-trt10</Version>
     <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
-    <InformationalVersion>0.2.0-trt10</InformationalVersion>
+    <FileVersion>0.2.1.0</FileVersion>
+    <InformationalVersion>0.2.1-trt10</InformationalVersion>
 
     <Authors>alanxinn</Authors>
     <Company>alanxinn</Company>
@@ -23,7 +23,7 @@
     <AssemblyDescription>C# managed wrapper for the TensorRT native inference API.</AssemblyDescription>
 
     <PackageTags>TensorRT;YOLO11;RF-DETR;SAM3;DINOv3;features;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
-    <PackageReleaseNotes>TRT10 inference with YOLO/RF-DETR, SAM3 prompt interfaces and DINOv3 image feature extraction.</PackageReleaseNotes>
+    <PackageReleaseNotes>RTX30/40/50 support with automatically restored TensorRT10/CUDA12 runtime dependencies; YOLO/RF-DETR, SAM3 and DINOv3.</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
@@ -43,7 +43,12 @@
     <NativeTrtRuntimeSource Condition="'$(NativeTrtRuntimeSource)' == ''">$(NativeRuntimeSource)</NativeTrtRuntimeSource>
     <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64</NativeRuntimeDestination>
     <NativeCvinferLibraryName>alanxinn_cvinfer_trt.dll</NativeCvinferLibraryName>
+    <BundleTensorRtRuntime Condition="'$(BundleTensorRtRuntime)' == ''">false</BundleTensorRtRuntime>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(BundleTensorRtRuntime)' == 'true'">
+    <PackageReference Include="alanxinn.TensorRtRuntime.Core.TensorRT10" Version="[$(Version)]" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Remove="README.md" />
@@ -65,7 +70,9 @@
   </ItemGroup>
 
   <Target Name="ValidatePackageLicenseFile"
-          BeforeTargets="Pack">
+          BeforeTargets="Pack;GenerateNuspec">
+    <Error Text="Use scripts/Pack-Trt10.ps1 to pack with automatic runtime dependencies."
+           Condition="'$(BundleTensorRtRuntime)' != 'true'" />
     <Error Text="LICENSE.txt was not found. Expected path: $(MSBuildProjectDirectory)\..\..\LICENSE.txt"
            Condition="!Exists('$(MSBuildProjectDirectory)\..\..\LICENSE.txt')" />
   </Target>
@@ -78,10 +85,6 @@
                                   Condition="Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_sam3.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_sam3.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll')" />
-      <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\nvinfer_10.dll"
-                                  Condition="Exists('$(NativeTrtRuntimeSource)\nvinfer_10.dll')" />
-      <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\nvinfer_plugin_10.dll" />
-      <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\cudart64_12.dll" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\opencv_world*.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\cudart64_*d.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\opencv_world*d.dll" />
@@ -131,10 +134,6 @@
                                   Condition="Exists('$(NativeRuntimeDestination)\$(NativeCvinferLibraryName)')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_sam3.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_sam3.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll')" />
-      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer_10.dll"
-                                  Condition="Exists('$(NativeRuntimeDestination)\nvinfer_10.dll')" />
-      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer_plugin_10.dll" />
-      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\cudart64_12.dll" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\cudart64_*d.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\opencv_world*d.dll" />

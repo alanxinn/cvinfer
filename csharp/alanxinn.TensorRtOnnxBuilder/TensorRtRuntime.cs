@@ -15,9 +15,9 @@ namespace alanxinn.TensorRt;
 /// <summary>
 /// Locates or downloads the large TensorRT/CUDA runtime used by the native builder.
 /// </summary>
-public static class TensorRtRuntime
+public static partial class TensorRtRuntime
 {
-    private const string PackageVersion = "0.2.0-trt10";
+    private const string PackageVersion = "0.2.1-trt10";
     private const string RuntimeArchiveName = "tensorrt10.16.1.11-cuda12.9-runtime-win-x64.zip";
     // No TRT 10 release archive is published by this branch. Never fall back
     // to the incompatible TRT 8 archive. A deployment can configure a mirror.
@@ -29,7 +29,10 @@ public static class TensorRtRuntime
         "nvinfer_plugin_10.dll",
         "nvonnxparser_10.dll",
         "nvinfer_builder_resource_ptx_10.dll",
-        "cudart64_12.dll"
+        "cudart64_12.dll",
+        "nvinfer_builder_resource_sm86_10.dll",
+        "nvinfer_builder_resource_sm89_10.dll",
+        "nvinfer_builder_resource_sm120_10.dll"
     };
     private static readonly string[] OptionalFiles =
     {
@@ -93,7 +96,10 @@ public static class TensorRtRuntime
             if (initializedDirectory != null)
                 return initializedDirectory;
 
-            var localDirectory = FindLocalRuntimeDirectory() ?? StageInstalledRuntime();
+            var localDirectory = StageBundledRuntime();
+            if (localDirectory == null && Environment.GetEnvironmentVariable("ALANXINN_TENSORRT_REQUIRE_BUNDLED") == "1")
+                throw new DllNotFoundException("TensorRT runtime must be restored from the NuGet dependency packages.");
+            localDirectory = localDirectory ?? FindLocalRuntimeDirectory() ?? StageInstalledRuntime();
             if (localDirectory == null)
             {
                 if (DisableAutoDownload)

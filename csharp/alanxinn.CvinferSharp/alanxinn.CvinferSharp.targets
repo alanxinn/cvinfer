@@ -19,13 +19,17 @@
       <_AlanxinnPackageNativeAssets Include="@(NativeCopyLocalItems)"
         Condition="'%(NativeCopyLocalItems.CopyLocal)' == 'true' and
                    '%(NativeCopyLocalItems.AssetType)' == 'native' and
-                   ('%(NativeCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp.TensorRT10' or
+                   ($([System.String]::Copy('%(NativeCopyLocalItems.NuGetPackageId)').ToLowerInvariant().StartsWith('alanxinn.tensorrtruntime.')) or
+                    '%(NativeCopyLocalItems.NuGetPackageId)' == 'alanxinn.TensorRtOnnxBuilder.TensorRT10' or
+                    '%(NativeCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp.TensorRT10' or
                     '%(NativeCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp' or
                     '%(NativeCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp.Denglin')" />
       <_AlanxinnPackageNativeAssets Include="@(RuntimeTargetsCopyLocalItems)"
         Condition="'%(RuntimeTargetsCopyLocalItems.CopyLocal)' == 'true' and
                    '%(RuntimeTargetsCopyLocalItems.AssetType)' == 'native' and
-                   ('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp.TensorRT10' or
+                   ($([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)').ToLowerInvariant().StartsWith('alanxinn.tensorrtruntime.')) or
+                    '%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'alanxinn.TensorRtOnnxBuilder.TensorRT10' or
+                    '%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp.TensorRT10' or
                     '%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp' or
                     '%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'alanxinn.CvinferSharp.Denglin')" />
     </ItemGroup>

@@ -18,9 +18,9 @@
 全部新包发布后，用户仅安装需要的主包：
 
 ```powershell
-dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.1-trt10
+dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.1
 # 需要在应用内从 ONNX 构建时安装：
-dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.1-trt10
+dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.1
 ```
 
 NuGet 自动还原依赖并部署到 runtimes/win-x64/native，无需手动安装各个子包。

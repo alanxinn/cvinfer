@@ -9,10 +9,10 @@
     <AssemblyName>alanxinn.CvinferSharp</AssemblyName>
     <PackageId>alanxinn.CvinferSharp.TensorRT10</PackageId>
 
-    <Version>0.2.1-trt10</Version>
+    <Version>0.2.1</Version>
     <AssemblyVersion>0.2.0.0</AssemblyVersion>
     <FileVersion>0.2.1.0</FileVersion>
-    <InformationalVersion>0.2.1-trt10</InformationalVersion>
+    <InformationalVersion>0.2.1</InformationalVersion>
 
     <Authors>alanxinn</Authors>
     <Company>alanxinn</Company>

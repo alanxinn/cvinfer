@@ -15,14 +15,14 @@
 
 ## 安装
 
-TensorRT 10 包名为 `alanxinn.CvinferSharp.TensorRT10`，本分支版本为 `0.2.1-trt10`。
+TensorRT 10 包名为 `alanxinn.CvinferSharp.TensorRT10`，本分支版本为 `0.2.1`。
 包名按 TensorRT 大版本区分，程序集名及 `using alanxinn` 保持兼容。
 0.2.1 默认覆盖 RTX 30/40/50，Core runtime 自动安装，无需开发 SDK 或手动配置 PATH。
 Engine 仍需在目标显卡生成。新包尚需打包发布，见 [部署说明](../../docs/TRT10_DLL_DEPENDENCIES.md)。
 已发布的 0.1.x 无后缀 TensorRT 包使用旧 SDK。
 
 ```powershell
-dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.1-trt10 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
+dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.1 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
 ```
 
 只使用 Denglin 后端时安装：

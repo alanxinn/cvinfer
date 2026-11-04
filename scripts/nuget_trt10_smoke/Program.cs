@@ -124,6 +124,8 @@ var modules = Process.GetCurrentProcess().Modules.Cast<ProcessModule>()
     .Where(x => x.ModuleName.StartsWith("alanxinn_", StringComparison.OrdinalIgnoreCase) ||
                 x.ModuleName.StartsWith("nvinfer", StringComparison.OrdinalIgnoreCase) ||
                 x.ModuleName.StartsWith("nvonnxparser", StringComparison.OrdinalIgnoreCase) ||
+                x.ModuleName.StartsWith("cudart64_", StringComparison.OrdinalIgnoreCase) ||
+                x.ModuleName.StartsWith("opencv_world", StringComparison.OrdinalIgnoreCase) ||
                 x.ModuleName.StartsWith("cudnn", StringComparison.OrdinalIgnoreCase) ||
                 x.ModuleName.StartsWith("cublas", StringComparison.OrdinalIgnoreCase) ||
                 x.ModuleName.StartsWith("nvrtc", StringComparison.OrdinalIgnoreCase))

@@ -16,6 +16,7 @@ dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.0 --sou
 新 NuGet 自动还原 RTX 30/40/50 的 Core、SM86/SM89/SM120 和 PTX 资源依赖，
 无需开发 SDK 或额外 ZIP；首次使用自动合并资源并校验 SHA256。
 0.2.0 本地包已编译生成，NuGet 自动部署及消费验证通过；尚未远程发布。实机验证仅覆盖 RTX 4060。
+Windows x64 的派生 RID（如 .NET Framework 的 `win7-x64`）统一部署到 `runtimes/win-x64/native`。
 
 ## C# 示例
 

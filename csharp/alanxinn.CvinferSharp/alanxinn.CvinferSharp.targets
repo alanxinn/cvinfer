@@ -6,7 +6,11 @@
   -->
   <PropertyGroup>
     <AlanxinnNativeRuntimeRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</AlanxinnNativeRuntimeRid>
-    <AlanxinnNativeRuntimeRid Condition="'$(AlanxinnNativeRuntimeRid)' == ''">win-x64</AlanxinnNativeRuntimeRid>
+    <!-- .NET Framework can infer win7-x64. Our Windows x64 native assets
+         and runtime loaders use the portable win-x64 deployment directory. -->
+    <AlanxinnNativeRuntimeRid Condition="'$(RuntimeIdentifier)' == '' or
+      ($([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win')) and
+       $([System.String]::Copy('$(RuntimeIdentifier)').EndsWith('-x64')))">win-x64</AlanxinnNativeRuntimeRid>
     <AlanxinnNativeRuntimeDirectory>$(OutDir)runtimes\$(AlanxinnNativeRuntimeRid)\native</AlanxinnNativeRuntimeDirectory>
   </PropertyGroup>
 

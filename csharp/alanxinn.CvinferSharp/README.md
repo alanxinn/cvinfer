@@ -86,6 +86,8 @@ NuGet native 文件位于：
 runtimes/win-x64/native/
 ```
 
+.NET Framework 自动推断的 `win7-x64` 等 Windows x64 RID 也统一部署到上述目录。
+
 `alanxinn.CvinferSharp.TensorRT10` 及其自动依赖的 Core runtime 合计提供：
 
 ```text

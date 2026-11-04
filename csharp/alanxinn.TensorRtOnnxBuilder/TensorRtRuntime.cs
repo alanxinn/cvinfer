@@ -17,7 +17,7 @@ namespace alanxinn.TensorRt;
 /// </summary>
 public static partial class TensorRtRuntime
 {
-    private const string PackageVersion = "0.2.1";
+    private const string PackageVersion = "0.2.0";
     private const string RuntimeArchiveName = "tensorrt10.16.1.11-cuda12.9-runtime-win-x64.zip";
     // No TRT 10 release archive is published by this branch. Never fall back
     // to the incompatible TRT 8 archive. A deployment can configure a mirror.

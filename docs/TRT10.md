@@ -68,10 +68,10 @@ YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异�
 
 命名沿用 main 分支格式：只在原 PackageId 后加 `.TensorRT10`，版本号使用普通数字，不再附加 `-trt10`。
 例如 main 的 `alanxinn.CvinferSharp.<版本>.nupkg` 对应 `alanxinn.CvinferSharp.TensorRT10.<版本>.nupkg`。
-当前源码版本为 `0.2.1`；历史已生成的 `0.2.0-trt10` 包及其验证记录保留原名，需重新打包才能生成新格式产物。
+当前源码及已生成包版本为 `0.2.0`；旧 `0.2.0-trt10` 包已删除，历史验证记录仍保留原名。
 
-- `alanxinn.CvinferSharp.TensorRT10.0.2.1.nupkg`：推理封装，自动依赖 Core runtime 包。
-- `alanxinn.TensorRtOnnxBuilder.TensorRT10.0.2.1.nupkg`：ONNX builder，自动依赖三代 GPU 的全部资源包。
+- `alanxinn.CvinferSharp.TensorRT10.0.2.0.nupkg`：推理封装，自动依赖 Core runtime 包。
+- `alanxinn.TensorRtOnnxBuilder.TensorRT10.0.2.0.nupkg`：ONNX builder，自动依赖三代 GPU 的全部资源包。
 - `alanxinn.TensorRtRuntime.*.TensorRT10`：8 个自动还原的 runtime 依赖包，无需用户逐个安装。
 - `tensorrt10.16.1.11-cuda12.9-sm86-sm89-sm120-runtime-win-x64.zip`：可选备份，使用 NuGet 不需要它。
 - `artifacts.json`：产物大小和 SHA256。
@@ -92,10 +92,11 @@ Python 测试、验证及结果对比脚本仅保留在本地，不随 Git 提�
 通过 NuGet builder 重建 YOLO11 检测引擎，再运行 YOLO11/26 det/seg/pose、RF-DETR det/seg、
 本地 SAM3.1 和可用 DINOv3。缺失引擎但有 ONNX 时自动构建。
 另会发现完整的 SAM2.1 engine bundle，验证框、正负点、mask 反馈和纯点提示；
-没有 SAM2.1 engine 时明确记录跳过。本轮 SAM2.1 仅实现代码及下载 tiny 权重，未编译或运行验证。
+没有 SAM2.1 engine 时明确记录跳过。SAM2.1 已编译纳入 0.2.0 包并下载 tiny 权重，尚未构建模型引擎或运行真实推理验证。
 无真实 DINOv3 权重时仅运行明确标记为 synthetic 的算子检查。
 报告在 `cache/nuget-trt10-validation/validation.json`，日志位于该目录和产物 `logs` 目录。
-2026-10-30 的实际打包产物、哈希和 11 项消费测试结果见 [NuGet 验证记录](TRT10_NUGET_VALIDATION.md)。
+2026-11-04 新生成包及 11 项消费测试结果见 [0.2.0 验证记录](TRT10_NUGET_0.2.0_VALIDATION.md)。
+2026-10-30 的历史打包产物、哈希和 11 项消费测试结果见 [NuGet 验证记录](TRT10_NUGET_VALIDATION.md)。
 
 - `bin/alanxinn_cvinfer_trt.dll`：原生推理 API。
 - `bintrt`：`nvinfer_10.dll`、`nvinfer_plugin_10.dll`、`cudart64_12.dll`、OpenCV，及可选私有 CUDA DLL。

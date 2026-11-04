@@ -1,7 +1,8 @@
 # SAM2.1 图片交互分割
 
 按已确认的范围，提供框选、正点、负点和连续掩码修正；支持纯点提示。
-本轮只修改代码及下载权重，**未编译、未导出 ONNX、未构建 engine、未运行真实推理**。
+2026-11-04 已编译原生库及 net472/net6.0/net8.0 封装，纳入 0.2.0 NuGet。
+**尚未导出 SAM2.1 ONNX、构建 engine 或运行真实推理**。
 语言描述和视频功能留待后续。
 
 ## 权重与导出
@@ -68,11 +69,11 @@ var pointOnly = sam.Predict();
 首次设置图片运行编码器并释放其 GPU 上下文；后续点击只运行解码器。
 
 C ABI 位于 `include/sam2/sam2_api.h`，Python 封装为 `scripts/sam2_infer.py`。
-NuGet 打包规则已加入 `alanxinn_cvinfer_sam2.dll`，Denglin 包不包含此接口；尚未生成新包。
+`alanxinn_cvinfer_sam2.dll` 已随 TensorRT10 0.2.0 推理包生成；Denglin 包不包含此接口。
 
 ## 推理与后续验证
 
-以下命令需后续编译和生成 engine 后执行，本轮没有运行：
+以下命令需生成 SAM2.1 engine 后执行，本轮没有运行：
 
 ```powershell
 python scripts/sam2_infer.py --image cache/trt10-models/bus.jpg --box 50 390 245 910 --positive 150 600 --negative 240 850 --refine

@@ -1,6 +1,6 @@
 # TensorRT10：RTX 30/40/50 与 NuGet 自动部署
 
-2026-10-31 配置更新；本次只修改代码，未编译、打包或发布。实机记录只覆盖 RTX 4060，
+2026-11-04 已编译、打包 0.2.0 并通过 11 项隔离消费测试，尚未远程发布。实机记录只覆盖 RTX 4060，
 不表示 30/50 各型号均已实测。旧 0.2.0-trt10 包不包含下面的自动依赖方案。
 
 | GeForce 系列 | 架构 | 默认 builder resource |
@@ -18,9 +18,9 @@
 全部新包发布后，用户仅安装需要的主包：
 
 ```powershell
-dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.1
+dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.0
 # 需要在应用内从 ONNX 构建时安装：
-dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.1
+dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.0
 ```
 
 NuGet 自动还原依赖并部署到 runtimes/win-x64/native，无需手动安装各个子包。
@@ -56,7 +56,8 @@ NuGet.org 单包上限 250MB；本机 PTX/SM120 文件压缩后仍超限，故�
 IncludeOptionalLibraries 参数只给备份 ZIP 加入可选库，不改变标准 NuGet 依赖。
 
 消费检查脚本不再提供 SDK/ZIP DLL，仅设置独立空缓存并强制使用 NuGet 自带资源，
-检查自动还原、资源合并、校验和、DLL 来源及模型调用。此新流程尚未编译和执行。
+检查自动还原、资源合并、校验和、DLL 来源及模型调用。此流程已在 RTX 4060 上通过；
+SAM2.1 仅完成编译，DINOv3 两项仍是随机权重算子验证，见 [0.2.0 验证记录](TRT10_NUGET_0.2.0_VALIDATION.md)。
 
 参考：[NVIDIA GPU 架构表](https://developer.nvidia.com/cuda/gpus)、
 [NuGet.org 大小限制](https://learn.microsoft.com/en-us/nuget/nuget-org/nuget-org-faq)、

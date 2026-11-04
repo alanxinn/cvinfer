@@ -8,7 +8,7 @@ TensorRT/Denglin 双后端推理项目，包含：
 - `yolo`：YOLO11 检测、分割、pose 前后处理。
 - `rf_detr`：RF-DETR 检测/分割前后处理。
 - `sam3`：SAM3 框与正负点交互、文本概念分割；已使用本地 SAM3.1 真实权重完成 C ABI/C# 推理对照验证。
-- `sam2`：SAM2.1 图片框选、正负点、纯点提示及连续掩码修正；已接入接口和导出流程，待编译及真实推理验证。
+- `sam2`：SAM2.1 图片框选、正负点、纯点提示及连续掩码修正；已编译接口并提供导出流程，真实推理待验证。
 - `dinov3`：DINOv3 ViT/ConvNeXt 图像特征推理，输出全局向量、patch 特征与特征图。
 - `api`：稳定 C ABI 动态库。
 - `tensorrt_builder`：ONNX 转 TensorRT engine。
@@ -40,7 +40,7 @@ ONNX builder 首次使用自动合并 PTX/SM120 大文件，无需用户安装 S
 
 ## NuGet Packages
 
-本分支的 TensorRT 包版本为 `0.2.1`，应从源码构建；下表保留已发布版本信息，
+本分支已在 `package/TensorRT10` 生成版本 `0.2.0` 的本地包，尚未远程发布；下表保留已发布版本信息，
 已发布的 `0.1.x` TensorRT 包对应旧 SDK，不能与本分支的 native DLL 混用。
 
 TRT10 本地包名为 `alanxinn.CvinferSharp.TensorRT10` 和 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，

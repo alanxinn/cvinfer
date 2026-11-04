@@ -5,17 +5,17 @@ C# 调用 TensorRT native builder，将 ONNX 转为 serialized engine。
 
 ## 安装
 
-TensorRT 10 包名为 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，版本为 `0.2.1`。
+TensorRT 10 包名为 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，版本为 `0.2.0`。
 程序集名和 `using alanxinn.TensorRt` 保持兼容；旧的无后缀已发布包不适用于 TRT 10。
 
 ```powershell
-dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.1 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
+dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.0 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
 ```
 
 要求 Windows x64、NVIDIA 驱动和匹配的 TensorRT/CUDA。
 新 NuGet 自动还原 RTX 30/40/50 的 Core、SM86/SM89/SM120 和 PTX 资源依赖，
 无需开发 SDK 或额外 ZIP；首次使用自动合并资源并校验 SHA256。
-本次只改代码，新包尚未编译发布；之前的实测仅覆盖 RTX 4060。
+0.2.0 本地包已编译生成，NuGet 自动部署及消费验证通过；尚未远程发布。实机验证仅覆盖 RTX 4060。
 
 ## C# 示例
 
@@ -55,7 +55,7 @@ INT8 适用于包含 Q/DQ 节点的 ONNX。
 NuGet 安装不需要配置 URL；仅源码/旧部署流程的外部 ZIP 下载需要显式 URL。缓存位于：
 
 ```text
-%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.2.1\minimal\win-x64
+%LOCALAPPDATA%\alanxinn\TensorRtOnnxBuilder\0.2.0\minimal\win-x64
 ```
 
 可配置：

@@ -13,7 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="alanxinn.TensorRtOnnxBuilder.TensorRT10" Version="0.2.1"
+    <PackageReference Include="alanxinn.TensorRtOnnxBuilder.TensorRT10" Version="0.2.0"
                       Condition="'$(UseLocalTensorRtProject)' != 'true'" />
     <ProjectReference Include="..\alanxinn.TensorRtOnnxBuilder\alanxinn.TensorRtOnnxBuilder.csproj"
                       Condition="'$(UseLocalTensorRtProject)' == 'true'" />

@@ -14,7 +14,7 @@
     <UseLocalDenglinProject Condition="'$(UseLocalDenglinProject)' == ''">false</UseLocalDenglinProject>
     <UseLocalTensorRtProject Condition="'$(UseLocalTensorRtProject)' == '' and '$(UseLocalDenglinProject)' != 'true'">true</UseLocalTensorRtProject>
     <CvinferSharpPackageId Condition="'$(CvinferSharpPackageId)' == ''">alanxinn.CvinferSharp.TensorRT10</CvinferSharpPackageId>
-    <CvinferSharpPackageVersion Condition="'$(CvinferSharpPackageVersion)' == ''">0.2.1</CvinferSharpPackageVersion>
+    <CvinferSharpPackageVersion Condition="'$(CvinferSharpPackageVersion)' == ''">0.2.0</CvinferSharpPackageVersion>
     <CvinferSharpDenglinPackageId Condition="'$(CvinferSharpDenglinPackageId)' == ''">alanxinn.CvinferSharp.Denglin</CvinferSharpDenglinPackageId>
     <CvinferSharpDenglinPackageVersion Condition="'$(CvinferSharpDenglinPackageVersion)' == ''">0.1.4</CvinferSharpDenglinPackageVersion>
     <RestoreAdditionalProjectSources>$(MSBuildProjectDirectory)\..\..\package\TensorRT10;$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\TensorRT\Release;$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\Denglin</RestoreAdditionalProjectSources>

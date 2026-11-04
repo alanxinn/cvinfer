@@ -39,7 +39,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--source", type=Path, default=Path("build/trt10-release/builder_runtime"))
     p.add_argument("--output", type=Path, default=Path("package/TensorRT10"))
-    p.add_argument("--version", default="0.2.1")
+    p.add_argument("--version", default="0.2.0")
     a = p.parse_args()
     source, output = a.source.resolve(), a.output.resolve()
     repo = Path(__file__).resolve().parents[1]

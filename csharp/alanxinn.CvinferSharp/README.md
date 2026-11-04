@@ -6,7 +6,7 @@
 
 - YOLO11/YOLO26 检测、分割和 Pose，RF-DETR 检测与分割；
 - SAM3 框/正负点/文本接口，真实权重验证状态见 `sam3/README.md`；
-- SAM2.1 图片框/正负点/连续修正接口，待编译及真实推理验证，见 [SAM2.1 说明](../../sam2/README.md)；
+- SAM2.1 图片框/正负点/连续修正接口，已编译，真实推理待验证，见 [SAM2.1 说明](../../sam2/README.md)；
 - DINOv3 图像特征、patch/feature map 和余弦相似度，见 `dinov3/README.md`；
 - BGR 图像推理；
 - 检测框、Mask、耗时读取；
@@ -15,14 +15,14 @@
 
 ## 安装
 
-TensorRT 10 包名为 `alanxinn.CvinferSharp.TensorRT10`，本分支版本为 `0.2.1`。
+TensorRT 10 包名为 `alanxinn.CvinferSharp.TensorRT10`，本分支版本为 `0.2.0`。
 包名按 TensorRT 大版本区分，程序集名及 `using alanxinn` 保持兼容。
-0.2.1 默认覆盖 RTX 30/40/50，Core runtime 自动安装，无需开发 SDK 或手动配置 PATH。
-Engine 仍需在目标显卡生成。新包尚需打包发布，见 [部署说明](../../docs/TRT10_DLL_DEPENDENCIES.md)。
+0.2.0 默认覆盖 RTX 30/40/50，Core runtime 自动安装，无需开发 SDK 或手动配置 PATH。
+Engine 仍需在目标显卡生成。本地包已生成，尚未远程发布，见 [部署说明](../../docs/TRT10_DLL_DEPENDENCIES.md)。
 已发布的 0.1.x 无后缀 TensorRT 包使用旧 SDK。
 
 ```powershell
-dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.1 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
+dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.0 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
 ```
 
 只使用 Denglin 后端时安装：

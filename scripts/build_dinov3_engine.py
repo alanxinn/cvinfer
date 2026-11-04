@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-from validate_trt10 import BuilderConfig, bind, load_runtime
+from trt10_runtime import BuilderConfig, bind, load_runtime
 
 
 def main():

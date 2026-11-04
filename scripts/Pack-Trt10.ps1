@@ -58,12 +58,16 @@ try {
     [ordered]@{ tensorRT = '10.16.1.11'; cuda = '12.9'; optionalLibraries = [bool]$IncludeOptionalLibraries;
         architectures = $CudaArchitectures; platform = 'win-x64'; artifacts = $artifacts } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'artifacts.json') -Encoding UTF8
-    if (-not $SkipTests) {
+    $localTestScript = Join-Path $PSScriptRoot 'test_trt10_nuget.py'
+    if (-not $SkipTests -and -not (Test-Path -LiteralPath $localTestScript -PathType Leaf)) {
+        Write-Host '未找到本地 Python 测试脚本，跳过模型测试。测试脚本不随仓库提交。'
+    }
+    if (-not $SkipTests -and (Test-Path -LiteralPath $localTestScript -PathType Leaf)) {
         if (-not $Python) {
             $cachedPython = Join-Path $repo 'cache/trt10-python/Scripts/python.exe'
             $Python = if (Test-Path -LiteralPath $cachedPython) { $cachedPython } else { (Get-Command python -ErrorAction Stop).Source }
         }
-        & $Python "$PSScriptRoot/test_trt10_nuget.py" --packages $output --version $version *> (Join-Path $logs 'nuget-tests.log')
+        & $Python $localTestScript --packages $output --version $version *> (Join-Path $logs 'nuget-tests.log')
         if ($LASTEXITCODE -ne 0) { throw "NuGet model tests failed; see $logs/nuget-tests.log and cache/nuget-trt10-validation" }
     }
     Write-Host "TensorRT10 NuGet/runtime artifacts: $output"

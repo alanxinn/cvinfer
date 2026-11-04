@@ -4,8 +4,7 @@ import ctypes as C
 import json
 from pathlib import Path
 import shutil
-from validate_trt10 import BuilderConfig, bind, load_runtime
-from test_trt10_contract import Profile
+from trt10_runtime import BuilderConfig, Profile, bind, load_runtime
 
 
 def main():

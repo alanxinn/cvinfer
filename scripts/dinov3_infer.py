@@ -4,7 +4,7 @@ import ctypes as C
 import json
 from pathlib import Path
 import numpy as np
-from validate_trt10 import bind, load_runtime
+from trt10_runtime import bind, load_runtime
 
 TENSOR_NAMES = ["global_embedding", "normalized_embedding", "patch_tokens", "feature_map"]
 

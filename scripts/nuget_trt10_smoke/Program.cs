@@ -72,6 +72,23 @@ if (mode == "model")
     }
     report["objects"] = count; report["nonempty_masks"] = masks; report["valid_keypoints"] = keypoints;
 }
+else if (mode == "sam2")
+{
+    using var model = new Sam2Segmentor(Get("engine"));
+    model.SetImage(pixels, width, height); model.SetBox(50, 390, 245, 910);
+    var initial = model.Predict();
+    Require(initial.Pixels.Any(x => x > 0), "Empty SAM2 box mask");
+    model.AddPoint(150, 600, true); var positive = model.Predict();
+    model.AddPoint(240, 850, false); var negative = model.Predict(usePreviousMask: true);
+    Require(positive.Pixels.Any(x => x > 0) && negative.Pixels.Any(x => x > 0), "Empty SAM2 refined mask");
+    Require(new[] { initial, positive, negative }.All(x => x.Width == width && x.Height == height && float.IsFinite(x.Box.Score)), "Invalid SAM2 masks");
+    model.RemovePoint(1); model.Predict();
+    model.ClearPoints(); Require(initial.Pixels.SequenceEqual(model.Predict().Pixels), "SAM2 clearing points changed box result");
+    model.ClearPrompts(); model.AddPoint(150, 600, true);
+    Require(model.Predict().Pixels.Any(x => x > 0), "Empty SAM2 point-only mask");
+    model.Dispose(); Require(initial.Pixels.Any(x => x > 0), "SAM2 disposal invalidated owned mask");
+    report["variant"] = Get("variant"); report["box_points_refinement"] = "PASS";
+}
 else if (mode == "sam3")
 {
     using var model = new Sam3Segmentor(Get("engine"));

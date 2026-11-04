@@ -8,6 +8,7 @@ TensorRT/Denglin 双后端推理项目，包含：
 - `yolo`：YOLO11 检测、分割、pose 前后处理。
 - `rf_detr`：RF-DETR 检测/分割前后处理。
 - `sam3`：SAM3 框与正负点交互、文本概念分割；已使用本地 SAM3.1 真实权重完成 C ABI/C# 推理对照验证。
+- `sam2`：SAM2.1 图片框选、正负点、纯点提示及连续掩码修正；已接入接口和导出流程，待编译及真实推理验证。
 - `dinov3`：DINOv3 ViT/ConvNeXt 图像特征推理，输出全局向量、patch 特征与特征图。
 - `api`：稳定 C ABI 动态库。
 - `tensorrt_builder`：ONNX 转 TensorRT engine。
@@ -17,6 +18,7 @@ TensorRT/Denglin 双后端推理项目，包含：
 
 TRT10 构建及模型验证见 [适配说明](docs/TRT10.md) 和 [本机验证记录](docs/TRT10_VALIDATION.md)。
 SAM3 的导出、接口、测试范围和权重要求见 [SAM3 说明](sam3/README.md)。
+SAM2.1 的四种模型规格、交互接口和验证流程见 [SAM2.1 说明](sam2/README.md)。
 DINOv3 的图像推理、特征输出和验证范围见 [DINOv3 说明](dinov3/README.md)。
 
 当前构建配置使用：

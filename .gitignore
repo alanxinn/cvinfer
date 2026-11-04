@@ -73,6 +73,14 @@ cache/
 __pycache__/
 *.pyc
 
+# Local Python tests and validation scripts (keep files, do not commit)
+test_*.py
+*_test.py
+validate_*.py
+compare_*.py
+**/tests/**/*.py
+**/test/**/*.py
+
 dl-docs-win-v2-20260731/
 csharp/alanxinn.DenglinOnnxBuilder/bin/
 csharp/alanxinn.DenglinOnnxBuilder/obj/

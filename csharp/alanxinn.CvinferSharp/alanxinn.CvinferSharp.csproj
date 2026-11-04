@@ -22,8 +22,8 @@
     <AssemblyTitle>alanxinn.CvinferSharp</AssemblyTitle>
     <AssemblyDescription>C# managed wrapper for the TensorRT native inference API.</AssemblyDescription>
 
-    <PackageTags>TensorRT;YOLO11;RF-DETR;SAM3;DINOv3;features;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
-    <PackageReleaseNotes>RTX30/40/50 support with automatically restored TensorRT10/CUDA12 runtime dependencies; YOLO/RF-DETR, SAM3 and DINOv3.</PackageReleaseNotes>
+    <PackageTags>TensorRT;YOLO11;RF-DETR;SAM2.1;SAM3;DINOv3;features;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
+    <PackageReleaseNotes>RTX30/40/50 support with automatically restored TensorRT10/CUDA12 runtime dependencies; YOLO/RF-DETR, SAM2.1, SAM3 and DINOv3.</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
@@ -84,6 +84,7 @@
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\$(NativeCvinferLibraryName)"
                                   Condition="Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_sam3.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_sam3.dll')" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_sam2.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_sam2.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\opencv_world*.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\cudart64_*d.dll" />
@@ -133,6 +134,7 @@
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\$(NativeCvinferLibraryName)"
                                   Condition="Exists('$(NativeRuntimeDestination)\$(NativeCvinferLibraryName)')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_sam3.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_sam3.dll')" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_sam2.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_sam2.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\cudart64_*d.dll" />
@@ -157,6 +159,8 @@
           Condition="'$(TargetFramework)' == 'net8.0'">
     <Error Text="$(NativeCvinferLibraryName) was not found in '$(NativeRuntimeSource)'. Build the TensorRT C++ runtime before packing the NuGet package."
            Condition="!Exists('$(NativeRuntimeSource)\$(NativeCvinferLibraryName)')" />
+    <Error Text="alanxinn_cvinfer_sam2.dll was not found. Build with BUILD_SAM2=ON before packing."
+           Condition="!Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_sam2.dll')" />
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\tools\Assert-PublicNativeRuntime.ps1&quot; -Path &quot;$(NativeRuntimeSource)\$(NativeCvinferLibraryName)&quot;" />
   </Target>
 </Project>

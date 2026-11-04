@@ -57,7 +57,8 @@ IncludeOptionalLibraries 参数只给备份 ZIP 加入可选库，不改变标�
 
 消费检查脚本不再提供 SDK/ZIP DLL，仅设置独立空缓存并强制使用 NuGet 自带资源，
 检查自动还原、资源合并、校验和、DLL 来源及模型调用。此流程已在 RTX 4060 上通过；
-SAM2.1 仅完成编译，DINOv3 两项仍是随机权重算子验证，见 [0.2.0 验证记录](TRT10_NUGET_0.2.0_VALIDATION.md)。
+SAM2.1 tiny 后续已通过真实权重验证，见 [SAM2.1 记录](../sam2/VALIDATION.md)；
+DINOv3 两项仍是随机权重算子验证，预训练权重待补充。NuGet 通用检查见 [0.2.0 验证记录](TRT10_NUGET_0.2.0_VALIDATION.md)。
 
 参考：[NVIDIA GPU 架构表](https://developer.nvidia.com/cuda/gpus)、
 [NuGet.org 大小限制](https://learn.microsoft.com/en-us/nuget/nuget-org/nuget-org-faq)、

@@ -6,7 +6,7 @@
 
 - YOLO11/YOLO26 检测、分割和 Pose，RF-DETR 检测与分割；
 - SAM3 框/正负点/文本接口，真实权重验证状态见 `sam3/README.md`；
-- SAM2.1 图片框/正负点/连续修正接口，已编译，真实推理待验证，见 [SAM2.1 说明](../../sam2/README.md)；
+- SAM2.1 图片框/正负点/连续修正接口，官方 tiny 权重已完成 C# NuGet 真实图片对照验证，见 [SAM2.1 说明](../../sam2/README.md)；
 - DINOv3 图像特征、patch/feature map 和余弦相似度，见 `dinov3/README.md`；
 - BGR 图像推理；
 - 检测框、Mask、耗时读取；

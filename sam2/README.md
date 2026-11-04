@@ -1,8 +1,9 @@
 # SAM2.1 图片交互分割
 
 按已确认的范围，提供框选、正点、负点和连续掩码修正；支持纯点提示。
-2026-11-04 已编译原生库及 net472/net6.0/net8.0 封装，纳入 0.2.0 NuGet。
-**尚未导出 SAM2.1 ONNX、构建 engine 或运行真实推理**。
+2026-11-05 已使用官方 tiny 预训练权重完成真实图片对照；ONNX 通过实际安装的
+`alanxinn.TensorRtOnnxBuilder.TensorRT10/0.2.0` 转换，再用 C# NuGet 验证推理。
+9 组提示的 mask IoU 对照官方 PyTorch 均为 1.0，详见 [验证记录](VALIDATION.md)。
 语言描述和视频功能留待后续。
 
 ## 权重与导出
@@ -16,7 +17,7 @@
 7402e0d864fa82708a20fbd15bc84245c2f26dff0eb43a4b5b93452deb34be69
 ```
 
-该值为本地下载文件校验值；后续须通过官方模型严格加载和推理对照验证。
+该文件已通过官方模型严格加载和真实图片推理对照验证。
 
 在单独 Python 3.10+ 环境准备依赖（SAM2 官方源码固定到明确提交，关闭可选 CUDA 扩展）：
 
@@ -73,7 +74,7 @@ C ABI 位于 `include/sam2/sam2_api.h`，Python 封装为 `scripts/sam2_infer.py
 
 ## 推理与后续验证
 
-以下命令需生成 SAM2.1 engine 后执行，本轮没有运行：
+以下命令用于重现原生推理及官方参考对照。已生成的 tiny engine 位于 `cache/sam2.1/engines`；本次 engine 的 NuGet 转换记录见 [验证记录](VALIDATION.md)：
 
 ```powershell
 python scripts/sam2_infer.py --image cache/trt10-models/bus.jpg --box 50 390 245 910 --positive 150 600 --negative 240 850 --refine

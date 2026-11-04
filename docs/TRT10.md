@@ -92,7 +92,7 @@ Python 测试、验证及结果对比脚本仅保留在本地，不随 Git 提�
 通过 NuGet builder 重建 YOLO11 检测引擎，再运行 YOLO11/26 det/seg/pose、RF-DETR det/seg、
 本地 SAM3.1 和可用 DINOv3。缺失引擎但有 ONNX 时自动构建。
 另会发现完整的 SAM2.1 engine bundle，验证框、正负点、mask 反馈和纯点提示；
-没有 SAM2.1 engine 时明确记录跳过。SAM2.1 已编译纳入 0.2.0 包并下载 tiny 权重，尚未构建模型引擎或运行真实推理验证。
+没有 SAM2.1 engine 时明确记录跳过。SAM2.1 tiny 已通过 NuGet builder 构建 engine，并完成官方 PyTorch 与 C# NuGet 真实图片对照，见 [验证记录](../sam2/VALIDATION.md)。
 无真实 DINOv3 权重时仅运行明确标记为 synthetic 的算子检查。
 报告在 `cache/nuget-trt10-validation/validation.json`，日志位于该目录和产物 `logs` 目录。
 2026-11-04 新生成包及 11 项消费测试结果见 [0.2.0 验证记录](TRT10_NUGET_0.2.0_VALIDATION.md)。

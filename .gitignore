@@ -72,12 +72,14 @@ models/
 cache/
 __pycache__/
 *.pyc
+csharp/**/native/**/tensorrt10-runtime.tsv
 
 # Local Python tests and validation scripts (keep files, do not commit)
 test_*.py
 *_test.py
 validate_*.py
 compare_*.py
+check_trt10_nuget.py
 **/tests/**/*.py
 **/test/**/*.py
 

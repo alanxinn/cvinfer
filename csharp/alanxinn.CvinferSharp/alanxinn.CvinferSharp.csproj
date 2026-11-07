@@ -23,7 +23,7 @@
     <AssemblyDescription>C# managed wrapper for the TensorRT native inference API.</AssemblyDescription>
 
     <PackageTags>TensorRT;YOLO11;RF-DETR;SAM2.1;SAM3;DINOv3;MediaPipe;hands;features;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
-    <PackageReleaseNotes>RTX30/40/50 support with automatically restored TensorRT10/CUDA12 runtime dependencies; YOLO/RF-DETR, SAM2.1, SAM3, DINOv3 and MediaPipe hands. Unified CvinferDemo validation.</PackageReleaseNotes>
+    <PackageReleaseNotes>Standalone Windows x64 inference package with TensorRT10/CUDA12 and MSVC runtime embedded; RTX30/40/50, YOLO/RF-DETR, SAM2.1, SAM3, DINOv3 and MediaPipe hands.</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
@@ -44,11 +44,9 @@
     <NativeRuntimeDestination Condition="'$(NativeRuntimeDestination)' == ''">$(MSBuildProjectDirectory)\native\win-x64</NativeRuntimeDestination>
     <NativeCvinferLibraryName>alanxinn_cvinfer_trt.dll</NativeCvinferLibraryName>
     <BundleTensorRtRuntime Condition="'$(BundleTensorRtRuntime)' == ''">false</BundleTensorRtRuntime>
+    <CoreRuntimePackage Condition="'$(CoreRuntimePackage)' == ''">$(MSBuildProjectDirectory)\..\..\package\TensorRT10\alanxinn.TensorRtRuntime.Core.TensorRT10.$(Version).nupkg</CoreRuntimePackage>
+    <CoreRuntimeExtractionDirectory>$(MSBuildProjectDirectory)\obj\TensorRTCore\$(Version)</CoreRuntimeExtractionDirectory>
   </PropertyGroup>
-
-  <ItemGroup Condition="'$(BundleTensorRtRuntime)' == 'true'">
-    <PackageReference Include="alanxinn.TensorRtRuntime.Core.TensorRT10" Version="[$(Version)]" />
-  </ItemGroup>
 
   <ItemGroup>
     <None Remove="README.md" />
@@ -71,13 +69,26 @@
 
   <Target Name="ValidatePackageLicenseFile"
           BeforeTargets="Pack;GenerateNuspec">
-    <Error Text="Use scripts/Pack-Trt10.ps1 to pack with automatic runtime dependencies."
+    <Error Text="Use scripts/Pack-Trt10.ps1 to pack the embedded TensorRT runtime."
            Condition="'$(BundleTensorRtRuntime)' != 'true'" />
     <Error Text="LICENSE.txt was not found. Expected path: $(MSBuildProjectDirectory)\..\..\LICENSE.txt"
            Condition="!Exists('$(MSBuildProjectDirectory)\..\..\LICENSE.txt')" />
   </Target>
 
+  <Target Name="PrepareBundledCoreRuntime"
+          Condition="'$(BundleTensorRtRuntime)' == 'true' and '$(TargetFramework)' == 'net8.0'">
+    <Error Text="Core runtime package is missing: $(CoreRuntimePackage). Run scripts/Pack-Trt10.ps1 first."
+           Condition="!Exists('$(CoreRuntimePackage)')" />
+    <Unzip SourceFiles="$(CoreRuntimePackage)" DestinationFolder="$(CoreRuntimeExtractionDirectory)" SkipUnchangedFiles="false" />
+    <ItemGroup>
+      <RequiredEmbeddedCoreFiles Include="nvinfer_10.dll;nvinfer_plugin_10.dll;cudart64_12.dll;msvcp140.dll;vcruntime140.dll;vcruntime140_1.dll;tensorrt10-runtime.tsv" />
+    </ItemGroup>
+    <Error Text="Core runtime package is incomplete: %(RequiredEmbeddedCoreFiles.Identity)"
+           Condition="!Exists('$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\%(RequiredEmbeddedCoreFiles.Identity)')" />
+  </Target>
+
   <Target Name="CopyAlanxinnNativeRuntime"
+          DependsOnTargets="PrepareBundledCoreRuntime"
           BeforeTargets="Build;Pack"
           Condition="'$(TargetFramework)' == 'net8.0'">
     <ItemGroup>
@@ -88,6 +99,8 @@
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_mediapipe.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_mediapipe.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\opencv_world*.dll" />
+      <AlanxinnNativeRuntimeFiles Include="$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\nvinfer_10.dll;$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\nvinfer_plugin_10.dll;$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\cudart64_12.dll;$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\msvcp140*.dll;$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\vcruntime140*.dll;$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\vccorlib140.dll;$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\concrt140.dll;$(CoreRuntimeExtractionDirectory)\runtimes\win-x64\native\tensorrt10-runtime.tsv"
+                                  Condition="'$(BundleTensorRtRuntime)' == 'true'" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\cudart64_*d.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\opencv_world*d.dll" />
 
@@ -102,6 +115,7 @@
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\nvrtc-builtins64_*.dll" />
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\zlibwapi.dll" />
       <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
+      <AlanxinnNativeStaleFiles Include="$(NativeRuntimeDestination)\msvcp140*.dll;$(NativeRuntimeDestination)\vcruntime140*.dll;$(NativeRuntimeDestination)\vccorlib140.dll;$(NativeRuntimeDestination)\concrt140.dll;$(NativeRuntimeDestination)\tensorrt10-runtime.tsv" />
     </ItemGroup>
 
     <Delete Files="@(AlanxinnNativeStaleFiles)"
@@ -139,6 +153,8 @@
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_mediapipe.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_mediapipe.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\nvinfer_10.dll;$(NativeRuntimeDestination)\nvinfer_plugin_10.dll;$(NativeRuntimeDestination)\cudart64_12.dll;$(NativeRuntimeDestination)\msvcp140*.dll;$(NativeRuntimeDestination)\vcruntime140*.dll;$(NativeRuntimeDestination)\vccorlib140.dll;$(NativeRuntimeDestination)\concrt140.dll;$(NativeRuntimeDestination)\tensorrt10-runtime.tsv"
+                                  Condition="'$(BundleTensorRtRuntime)' == 'true'" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\cudart64_*d.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\opencv_world*d.dll" />
 

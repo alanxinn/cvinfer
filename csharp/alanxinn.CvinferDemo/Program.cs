@@ -12,7 +12,23 @@ CvinferConfig config;
 try
 {
     parsed = ParseArguments(args);
+    if (parsed.Options.ContainsKey("test"))
+    {
+#if CVINFER_DENGLIN_DEMO
+        throw new ArgumentException("TensorRT integration tests require the TensorRT CvinferSharp library");
+#else
+        return TensorRtValidation.Run(parsed.Options);
+#endif
+    }
     modelTypeName = GetRequiredOption(parsed.Options, "type");
+    if (modelTypeName.Trim().Equals("mediapipe-hands", StringComparison.OrdinalIgnoreCase))
+    {
+#if CVINFER_DENGLIN_DEMO
+        throw new ArgumentException("mediapipe-hands requires the TensorRT CvinferSharp library");
+#else
+        return MediaPipeHandsDemo.Run(parsed.Options);
+#endif
+    }
     if (!modelTypeName.Equals("yolo26-det", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("yolo26-seg", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("yolo26-pose", StringComparison.OrdinalIgnoreCase) &&
@@ -21,7 +37,7 @@ try
         !modelTypeName.Equals("yolo11-pose", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("rf-detr-det", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("rf-detr-seg", StringComparison.OrdinalIgnoreCase))
-        throw new ArgumentException("--type must be yolo11-det/seg/pose, yolo26-det/seg/pose, rf-detr-det or rf-detr-seg");
+        throw new ArgumentException("--type must be yolo11-det/seg/pose, yolo26-det/seg/pose, rf-detr-det, rf-detr-seg or mediapipe-hands");
     enginePath = GetRequiredOption(parsed.Options, "model");
     imagePath = GetRequiredOption(parsed.Options, "img");
     resultPath = GetOption(parsed.Options, "output", "cvinfer_result.jpg");
@@ -285,7 +301,9 @@ static ParsedArguments ParseArguments(string[] args)
         if (key is "input-width" or "input-height")
             throw new ArgumentException($"{token} is no longer supported; input size is read from the TensorRT engine");
         if (key is not ("type" or "model" or "img" or "output" or "classes" or "backend" or
-            "preprocess" or "postprocess" or "warmup" or "iterations" or "timing"))
+            "preprocess" or "postprocess" or "warmup" or "iterations" or "timing" or
+            "palm-model" or "palm-threshold" or "hand-threshold" or "nms" or "max-hands" or "json" or
+            "test" or "fixtures" or "sam3-model" or "dinov3-model" or "reference"))
             throw new ArgumentException($"unknown option: {token}");
         if (key == "timing")
         {

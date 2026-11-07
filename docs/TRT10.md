@@ -85,12 +85,15 @@ YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异�
 PTX/SM120 大文件首次初始化自动合并到用户缓存并校验 SHA256。
 Windows x64 仍需适配显卡的 NVIDIA 驱动和对应 .NET 运行时；标准包不依赖私有 CUDA DLL。
 
-Python 测试、验证及结果对比脚本仅保留在本地，不随 Git 提交；本地缺少测试脚本时，打包流程明确提示跳过测试。
+打包流程默认运行仓库内的 `scripts/check_trt10_nuget.py`，缺少脚本会失败；只有显式
+指定 `-SkipTests` 才跳过测试。其他历史 Python 验证脚本仍按 `.gitignore` 保留在本地。
 
-本地存在 `test_trt10_nuget.py` 时，打包脚本默认执行它：从本地 feed 用 **PackageReference** 还原独立消费项目，
+测试从本地 feed 用 **PackageReference** 构建实际 `alanxinn.CvinferDemo`，按包哈希隔离缓存，
 核对三种 TFM、自动依赖、native 目录隔离和实际 DLL 来源；禁止回退到 SDK/外部 ZIP；自动查找 engine/ONNX，
 通过 NuGet builder 重建 YOLO11 检测引擎，再运行 YOLO11/26 det/seg/pose、RF-DETR det/seg、
 本地 SAM3.1 和可用 DINOv3。缺失引擎但有 ONNX 时自动构建。
+MediaPipe 还会检查包内手部 native DLL，并通过相同 Demo 验证 FP32/FP16 双手检测、
+21 点和世界坐标、重复推理及结果生命周期。
 另会发现完整的 SAM2.1 engine bundle，验证框、正负点、mask 反馈和纯点提示；
 没有 SAM2.1 engine 时明确记录跳过。SAM2.1 tiny 已通过 NuGet builder 构建 engine，并完成官方 PyTorch 与 C# NuGet 真实图片对照，见 [验证记录](../sam2/VALIDATION.md)。
 无真实 DINOv3 权重时仅运行明确标记为 synthetic 的算子检查。

@@ -10,6 +10,7 @@ TensorRT/Denglin 双后端推理项目，包含：
 - `sam3`：SAM3 框与正负点交互、文本概念分割；已使用本地 SAM3.1 真实权重完成 C ABI/C# 推理对照验证。
 - `sam2`：SAM2.1 图片框选、正负点、纯点提示及连续掩码修正；已使用官方 tiny 权重完成 NuGet 转换及真实图片推理对照验证。
 - `dinov3`：DINOv3 ViT/ConvNeXt 图像特征推理，输出全局向量、patch 特征与特征图。
+- `mediapipe`：TensorRT 10 手掌检测与 21 点手部推理，支持自动下载模型、转换 engine、C++/C ABI/C# 调用。
 - `api`：稳定 C ABI 动态库。
 - `tensorrt_builder`：ONNX 转 TensorRT engine。
 - `csharp`：C# P/Invoke、NuGet 和 Demo。
@@ -20,6 +21,7 @@ TRT10 构建及模型验证见 [适配说明](docs/TRT10.md) 和 [本机验证�
 SAM3 的导出、接口、测试范围和权重要求见 [SAM3 说明](sam3/README.md)。
 SAM2.1 的四种模型规格、交互接口和验证流程见 [SAM2.1 说明](sam2/README.md)。
 DINOv3 的图像推理、特征输出和验证范围见 [DINOv3 说明](dinov3/README.md)。
+MediaPipe 手部模型的自动下载、engine 转换和推理测试见 [手部推理说明](mediapipe/README.md)。
 
 当前构建配置使用：
 
@@ -66,6 +68,7 @@ yolo26-seg
 yolo26-pose
 rf-detr-det
 rf-detr-seg
+mediapipe-hands
 ```
 
 示例：
@@ -83,6 +86,10 @@ alanxinn.CvinferDemo.exe `
 ```
 
 输入尺寸和类别数默认从 engine 输出自动读取；`--classes` 仅用于显式限制类别数。
+手部推理使用 `--type mediapipe-hands --palm-model palm.engine --model hand.engine`，
+输出关键点图片和 JSON，完整用法见 [手部推理说明](mediapipe/README.md)。
+接口集成测试统一使用 `CvinferDemo --test integration` 或 `--test sam3-real`，
+参数和复现命令见 [C# 测试说明](csharp/README.md#统一接口测试入口)。
 `warmup` 不计入统计，`iterations` 为正式统计次数。
 计时默认关闭，需要输出耗时统计时添加 `--timing`。
 

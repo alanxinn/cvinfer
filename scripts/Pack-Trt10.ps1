@@ -58,9 +58,9 @@ try {
     [ordered]@{ tensorRT = '10.16.1.11'; cuda = '12.9'; optionalLibraries = [bool]$IncludeOptionalLibraries;
         architectures = $CudaArchitectures; platform = 'win-x64'; artifacts = $artifacts } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'artifacts.json') -Encoding UTF8
-    $localTestScript = Join-Path $PSScriptRoot 'test_trt10_nuget.py'
+    $localTestScript = Join-Path $PSScriptRoot 'check_trt10_nuget.py'
     if (-not $SkipTests -and -not (Test-Path -LiteralPath $localTestScript -PathType Leaf)) {
-        Write-Host '未找到本地 Python 测试脚本，跳过模型测试。测试脚本不随仓库提交。'
+        throw 'NuGet validation script is missing: scripts/check_trt10_nuget.py'
     }
     if (-not $SkipTests -and (Test-Path -LiteralPath $localTestScript -PathType Leaf)) {
         if (-not $Python) {

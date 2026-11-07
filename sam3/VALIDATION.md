@@ -79,9 +79,10 @@ FP32 单图流程在 8GB GPU 完成；nvidia-smi 约每 0.55 秒采样的**全�
 # 可选：原始 Meta 交互头数值检查（需本地官方源码 clone 和 einops）
 python scripts/test_sam31_meta_heads.py --meta-source cache/sam31-meta
 # C# 真实调用；先设置 ALANXINN_SAM3_NATIVE_DIR 和 bintrt 的 PATH，见部署说明
-# 最后一个参数是 validate_sam3_real.py 生成的原始 mask 目录
-dotnet csharp/alanxinn.TensorRtIntegrationSmoke/bin/Release/net8.0-windows/alanxinn.TensorRtIntegrationSmoke.dll `
-  --real-sam3 cache/sam31/engines cache/trt10-contract/bus.bgr cache/sam31/real-validation-images
+# --reference 是 validate_sam3_real.py 生成的原始 mask 目录
+dotnet csharp/alanxinn.CvinferDemo/bin/Release/net8.0-windows/alanxinn.CvinferDemo.dll `
+  --test sam3-real --model cache/sam31/engines --img cache/trt10-models/bus.jpg `
+  --reference cache/sam31/real-validation-images --json cache/sam31/validation-cvinferdemo.json
 ```
 
 模型、转换权重、引擎及图片只保留在本机，不提交 Git。

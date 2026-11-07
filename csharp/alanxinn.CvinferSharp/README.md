@@ -8,6 +8,8 @@
 - SAM3 框/正负点/文本接口，真实权重验证状态见 `sam3/README.md`；
 - SAM2.1 图片框/正负点/连续修正接口，官方 tiny 权重已完成 C# NuGet 真实图片对照验证，见 [SAM2.1 说明](../../sam2/README.md)；
 - DINOv3 图像特征、patch/feature map 和余弦相似度，见 `dinov3/README.md`；
+- MediaPipe 手掌检测与 21 点手部推理，使用本类库的 `MediaPipeHandDetector`，
+  示例和验证统一通过 `alanxinn.CvinferDemo --type mediapipe-hands`，见 [手部推理说明](../../mediapipe/README.md)；
 - BGR 图像推理；
 - 检测框、Mask、耗时读取；
 - TensorRT/Denglin 推理后端选择；

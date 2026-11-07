@@ -40,6 +40,7 @@ yolo26-seg
 yolo26-pose
 rf-detr-det
 rf-detr-seg
+mediapipe-hands
 ```
 
 其他参数：
@@ -62,7 +63,64 @@ rf-detr-seg
 
 RF-DETR 分割 engine 输出为 `dets`、`labels`、`masks`。
 
+MediaPipe 手部接口 `MediaPipeHandDetector` 已包含在 `alanxinn.CvinferSharp` 中，
+通过同一个 Demo 使用（仅 TensorRT）：
+
+```powershell
+dotnet run --project csharp/alanxinn.CvinferDemo -c Release -- `
+  --type mediapipe-hands `
+  --palm-model cache/mediapipe-hands/palm-fp32.engine `
+  --model cache/mediapipe-hands/hand-fp32.engine `
+  --img cache/mediapipe-hands/woman_hands.jpg `
+  --output cache/mediapipe-hands/demo/hands.jpg
+```
+
+默认同时保存 `hands.json`，包含手框、置信度、左右手、21 个像素关键点和世界坐标。
+可用 `--json PATH` 指定 JSON 文件，`--palm-threshold` / `--hand-threshold` 设置阈值，
+`--nms` 设置 NMS 阈值，`--max-hands` 限制手数；支持 `--warmup`、`--iterations`
+和 `--timing`（整次手部推理耗时）。下载模型、生成 engine 和 Demo 测试见
+[MediaPipe 说明](../mediapipe/README.md)。
+
 计时默认关闭，添加 `--timing` 后才输出耗时统计。
+
+## 统一接口测试入口
+
+接口集成测试统一使用 `alanxinn.CvinferDemo`，无需独立测试项目。
+TensorRT 配置支持以下测试模式；参数错误返回 2，运行失败返回 1，全部通过返回 0。
+
+```powershell
+dotnet build csharp/alanxinn.CvinferDemo -c Release
+# 同一进程 ONNX builder → YOLO → builder；可同时指定两个随机 tiny 模型做接口检查
+dotnet csharp/alanxinn.CvinferDemo/bin/Release/net8.0-windows/alanxinn.CvinferDemo.dll `
+  --test integration --fixtures cache/trt10-contract `
+  --model cache/trt10-validation/yolo11n.engine `
+  --sam3-model cache/sam3-tiny/engines `
+  --dinov3-model cache/dinov3-tiny/vit/engine/model.engine `
+  --json cache/trt10-contract/validation-cvinferdemo.json
+
+# SAM3.1 真实图片与 native mask 逐字节对照
+dotnet csharp/alanxinn.CvinferDemo/bin/Release/net8.0-windows/alanxinn.CvinferDemo.dll `
+  --test sam3-real --model cache/sam31/engines --img cache/trt10-models/bus.jpg `
+  --reference cache/sam31/real-validation-images --json cache/sam31/validation-cvinferdemo.json
+```
+
+`--fixtures` 目录需包含 `int64.onnx` 和 810×1080 的原始 BGR `bus.bgr`。
+可选的 `--sam3-model` / `--dinov3-model` 是现有随机 tiny 测试模型，验证接口、
+提示状态、归一化、结果所有权和释放行为，不代表真实模型质量。
+真实 SAM3.1 的模型和参考 mask 准备流程见 [SAM3 验证说明](../sam3/VALIDATION.md)。
+MediaPipe 仍使用上面的 `--type mediapipe-hands` 图片入口，通过
+`scripts/check_mediapipe_hands.py --demo ...` 自动调用 Demo 进行数值对照。
+
+NuGet 验证同样调用 `CvinferDemo --test nuget --reference <测试请求.json>`。
+运行 `scripts/Pack-Trt10.ps1` 会打包并自动执行
+`scripts/check_trt10_nuget.py`：按包哈希隔离还原目录，将实际 Demo 切换为纯
+PackageReference 模式，检查包内 DLL、运行时依赖及 YOLO/RF-DETR、SAM2/SAM3、
+DINOv3 和 MediaPipe FP32/FP16。包测试禁止 ProjectReference 和手工复制 native DLL。
+可单独复测：
+
+```powershell
+python scripts/check_trt10_nuget.py --packages package/TensorRT10
+```
 
 ## C# 调用
 

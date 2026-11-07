@@ -11,6 +11,7 @@
     <!-- Keep the RID for NuGet runtime asset selection, but use the standard
          bin\<Configuration>\net8.0-windows output directory. -->
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
     <UseLocalDenglinProject Condition="'$(UseLocalDenglinProject)' == ''">false</UseLocalDenglinProject>
     <UseLocalTensorRtProject Condition="'$(UseLocalTensorRtProject)' == '' and '$(UseLocalDenglinProject)' != 'true'">true</UseLocalTensorRtProject>
     <CvinferSharpPackageId Condition="'$(CvinferSharpPackageId)' == ''">alanxinn.CvinferSharp.TensorRT10</CvinferSharpPackageId>
@@ -19,10 +20,22 @@
     <CvinferSharpDenglinPackageVersion Condition="'$(CvinferSharpDenglinPackageVersion)' == ''">0.1.4</CvinferSharpDenglinPackageVersion>
     <RestoreAdditionalProjectSources>$(MSBuildProjectDirectory)\..\..\package\TensorRT10;$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\TensorRT\Release;$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\Denglin</RestoreAdditionalProjectSources>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(UseLocalDenglinProject)' == 'true' or '$(CvinferSharpPackageId)' == 'alanxinn.CvinferSharp.Denglin'">
+    <DefineConstants>$(DefineConstants);CVINFER_DENGLIN_DEMO</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UseLocalDenglinProject)' == 'true' or '$(CvinferSharpPackageId)' == 'alanxinn.CvinferSharp.Denglin'">
+    <Compile Remove="MediaPipeHandsDemo.cs" />
+    <Compile Remove="TensorRtValidation.cs" />
+    <Compile Remove="NugetValidation.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalTensorRtProject)' == 'true' and '$(UseLocalDenglinProject)' != 'true'">
+    <ProjectReference Include="..\alanxinn.TensorRtOnnxBuilder\alanxinn.TensorRtOnnxBuilder.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalDenglinProject)' != 'true' and '$(UseLocalTensorRtProject)' != 'true' and '$(CvinferSharpPackageId)' != 'alanxinn.CvinferSharp.Denglin'">
+    <PackageReference Include="alanxinn.TensorRtOnnxBuilder.TensorRT10" Version="$(CvinferSharpPackageVersion)" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="$(CvinferSharpPackageId)" Version="$(CvinferSharpPackageVersion)"
-                      Condition="'$(UseLocalDenglinProject)' != 'true' and '$(UseLocalTensorRtProject)' != 'true'" />
-    <PackageReference Include="$(CvinferSharpDenglinPackageId)" Version="$(CvinferSharpDenglinPackageVersion)"
                       Condition="'$(UseLocalDenglinProject)' != 'true' and '$(UseLocalTensorRtProject)' != 'true'" />
     <ProjectReference Include="..\alanxinn.CvinferSharp\alanxinn.CvinferSharp.csproj"
                       Condition="'$(UseLocalTensorRtProject)' == 'true'" />
@@ -35,8 +48,12 @@
       <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_trt.dll" />
       <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_sam3.dll" />
       <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_dinov3.dll')" />
+      <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_mediapipe.dll" Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_mediapipe.dll')" />
       <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bintrt\*.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(LocalTensorRtRuntime)" DestinationFolder="$(OutDir)runtimes\win-x64\native" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\build\trt10-release\tensorrt_builder\alanxinn_tensorrt_builder.dll"
+          DestinationFolder="$(OutDir)"
+          Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\trt10-release\tensorrt_builder\alanxinn_tensorrt_builder.dll')" />
   </Target>
 </Project>

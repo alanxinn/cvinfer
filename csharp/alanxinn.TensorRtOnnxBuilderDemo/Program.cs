@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.Json;
 using alanxinn.TensorRt;
 
 try
@@ -8,6 +11,14 @@ try
     {
         PrintUsage();
         return 0;
+    }
+    if (arguments.ReportPath is not null)
+    {
+        var reportPath = Path.GetFullPath(arguments.ReportPath);
+        if (string.Equals(reportPath, Path.GetFullPath(arguments.OnnxPath), StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(reportPath, Path.GetFullPath(arguments.EnginePath), StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Report path must differ from ONNX and engine paths");
+        File.Delete(reportPath); // Do not retain a successful receipt after a failed rebuild.
     }
 
     var buildOptions = new TensorRtBuildOptions
@@ -60,6 +71,28 @@ try
     Console.WriteLine($"Output: {result.EnginePath}");
     Console.WriteLine($"Size: {result.EngineSizeBytes:N0} bytes");
     Console.WriteLine($"Elapsed: {result.Duration.TotalSeconds:F2} s");
+    if (arguments.ReportPath is not null)
+    {
+        var reportPath = Path.GetFullPath(arguments.ReportPath);
+        var modules = Process.GetCurrentProcess().Modules.Cast<ProcessModule>()
+            .Where(m => m.ModuleName.StartsWith("alanxinn_", StringComparison.OrdinalIgnoreCase) ||
+                        m.ModuleName.StartsWith("nvinfer", StringComparison.OrdinalIgnoreCase) ||
+                        m.ModuleName.StartsWith("nvonnxparser", StringComparison.OrdinalIgnoreCase) ||
+                        m.ModuleName.StartsWith("cudart64_", StringComparison.OrdinalIgnoreCase))
+            .Select(m => m.FileName).ToArray();
+        using var engineFile = File.OpenRead(result.EnginePath);
+        var report = new
+        {
+            status = "ENGINE_BUILT", engine = result.EnginePath, bytes = result.EngineSizeBytes,
+            seconds = result.Duration.TotalSeconds,
+            engine_sha256 = Convert.ToHexString(SHA256.HashData(engineFile)).ToLowerInvariant(),
+            precision = buildOptions.Precision.ToString(), enable_tf32 = buildOptions.EnableTf32,
+            runtime_directory = TensorRtRuntime.InitializedDirectory,
+            builder_assembly = typeof(TensorRtOnnxBuilder).Assembly.Location, modules
+        };
+        Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
+        File.WriteAllText(reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+    }
     return 0;
 }
 catch (TensorRtBuilderException error)
@@ -87,6 +120,7 @@ static void PrintUsage()
     Console.WriteLine("  --workspace-mib N           TensorRT workspace in MiB (default: 4096)");
     Console.WriteLine("  --device N                  CUDA device id; -1 keeps the current device");
     Console.WriteLine("  --no-tf32                   Disable TF32 (enabled by default)");
+    Console.WriteLine("  --report PATH               Save engine hash and loaded runtime paths as JSON");
     Console.WriteLine("  --sparse                    Enable sparse weights");
     Console.WriteLine("  --strict                    Enable strict TensorRT types");
     Console.WriteLine("  --input-name NAME           Dynamic input tensor name");
@@ -112,7 +146,7 @@ sealed class DemoArguments
     private static readonly HashSet<string> ValueOptions = new(StringComparer.OrdinalIgnoreCase)
     {
         "onnx", "engine", "precision", "workspace-mib", "device", "input-name",
-        "min-shape", "opt-shape", "max-shape"
+        "min-shape", "opt-shape", "max-shape", "report"
     };
 
     private static readonly HashSet<string> FlagOptions = new(StringComparer.OrdinalIgnoreCase)
@@ -122,6 +156,7 @@ sealed class DemoArguments
 
     public string OnnxPath { get; private init; } = string.Empty;
     public string EnginePath { get; private init; } = string.Empty;
+    public string? ReportPath { get; private init; }
     public TensorRtPrecision Precision { get; private init; } = TensorRtPrecision.Fp16;
     public long WorkspaceMiB { get; private init; } = 4096;
     public int DeviceId { get; private init; } = -1;
@@ -178,6 +213,7 @@ sealed class DemoArguments
         {
             OnnxPath = onnxPath,
             EnginePath = enginePath,
+            ReportPath = values.TryGetValue("report", out var report) ? report : null,
             Precision = ParsePrecision(values.TryGetValue("precision", out var precision) ? precision : "fp32"),
             WorkspaceMiB = ParseLong(values, "workspace-mib", 4096),
             DeviceId = ParseInt(values, "device", -1),

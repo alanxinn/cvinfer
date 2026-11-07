@@ -150,7 +150,7 @@ SM86／SM120 运行资源已打包，尚无 RTX 30／50 系列实机验证记录
 | RF-DETR nano | 检测和分割 2 个真实模型的 NuGet 推理 |
 | SAM2.1 tiny | 官方权重经实际 NuGet builder 转换；9 组提示对照官方 PyTorch，mask IoU 均为 1.0；C# 掩码一致 |
 | SAM3.1 | 本地真实权重、1008×1008 FP32，框／正负点／文本与 PyTorch 对照；C# 与 C ABI 掩码一致 |
-| DINOv3 | ViT / ConvNeXt 随机权重算子图、接口和特征输出验证；官方预训练语义效果待权重补充 |
+| DINOv3 | ViT-S/16、ViT-S+/16、ConvNeXt-Tiny 预训练权重经实际 NuGet builder 转换；21 组真实图片对照通过，C# 与 C ABI 输出逐字节一致；已生成相似度示例与 PCA 特征图 |
 | MediaPipe Hands | 真实模型 FP32 / FP16，对照 ONNX Runtime，并核对 C++ / C ABI / C# 输出 |
 | NuGet 部署 | 两个主包曾在 net472 / net6.0 / net8.0 独立还原并实际运行；验证自动依赖、分片合并和原生 DLL 来源 |
 

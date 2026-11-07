@@ -42,6 +42,8 @@ dotnet run --project .\csharp\alanxinn.TensorRtOnnxBuilderDemo `
 --no-tf32
 --sparse
 --strict
+--report PATH               保存 engine SHA256、转换耗时、实际运行库目录和已加载 DLL 的 JSON
 ```
 
 输出包含 engine 路径、大小和耗时。
+`--report` 的路径必须与 ONNX 和 engine 不同；失败重建前会清除旧报告，避免复用过期成功记录。

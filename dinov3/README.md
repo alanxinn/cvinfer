@@ -4,9 +4,12 @@
 包括 C++、C ABI、C#、Python CLI、ONNX 导出和引擎构建。
 特征可用于图像检索、相似度计算，以及后续分类、检测或分割任务头。
 
-当前已完成**缩小的随机权重真实 DINOv3 算子图**的导出和推理测试。
-本机尚无官方预训练权重访问授权，预训练语义效果待取得权重后验证；
-合成测试引擎使用独立的 `cache/dinov3-tiny` 目录，CLI 会标记 `synthetic: true`。
+2026-11-08 已使用本地 ViT-S/16、ViT-S+/16、ConvNeXt-Tiny 预训练权重，
+完成 ONNX 导出、实际 NuGet builder 转换、真实图片 PyTorch 对照和 C# NuGet 推理。
+3 个模型各覆盖 7 组图像，FP32 最大相对 L2 误差为 `2.536e-5`，C# 与 C ABI 输出逐字节一致。
+相似度示例与 PCA 特征图已生成；这些是定性示例，不代表有标注数据集上的语义精度评估。
+具体来源和范围见 [验证记录](VALIDATION.md)。此前的随机权重算子测试保留于 `cache/dinov3-tiny`，
+与真实权重产物 `cache/dinov3-real` 分开，CLI 会明确标记 `synthetic`。
 
 ## 输出
 
@@ -32,7 +35,20 @@ cache/dinov3-python/Scripts/python.exe -m pip install -r scripts/requirements-di
 ```
 
 默认权重为 [Meta ViT-S/16](https://huggingface.co/facebook/dinov3-vits16-pretrain-lvd1689m)。
-先获得模型访问权限，在本机登录 Hugging Face，再执行：
+已有本地 safetensors snapshot 时无需登录，直接指定目录。本机真实模型示例：
+
+```powershell
+$checkpoint = 'D:/BaiduNetdiskDownload/DINOV3/DINOV3-safetensor/dinov3-vits16-pretrain-lvd1689m'
+python scripts/export_dinov3.py --checkpoint $checkpoint --output cache/dinov3-real/vits16/onnx
+python scripts/build_dinov3_engine.py --onnx cache/dinov3-real/vits16/onnx --output cache/dinov3-real/vits16/engine
+python scripts/dinov3_infer.py --engine cache/dinov3-real/vits16/engine/model.engine --image your-image.jpg --visualize
+```
+
+导出使用严格权重加载，缺失、额外或尺寸不匹配的参数都会报错，禁止静默补入随机参数。
+`bundle.json` 保存本地配置、processor、safetensors 权重／分片的 SHA256。
+更换模型规格时分别使用独立的输出目录。
+
+需要从 Hugging Face 下载时，先获得模型访问权限，在本机登录后执行：
 
 ```powershell
 cache/dinov3-python/Scripts/hf.exe auth login
@@ -48,6 +64,12 @@ cache/dinov3-python/Scripts/python.exe scripts/validate_dinov3_real.py --image y
 
 默认构建 FP32、关闭 TF32；`build_dinov3_engine.py --precision fp16` 允许 TensorRT 使用
 FP16 tactics，外部 I/O 仍为 FP32，精度应按具体预训练模型对照验证。
+构建脚本默认 `--builder nuget`，通过纯 PackageReference 的隔离 .NET 8 消费程序调用
+`alanxinn.TensorRtOnnxBuilder.TensorRT10/0.2.0`，需要 .NET 8 SDK 和 `package/TensorRT10`
+内的转换包及 8 个依赖包；可用 `--packages`、`--package-version` 指定来源与版本。
+按包哈希隔离 NuGet 缓存，强制使用包内运行库，禁止回退到本机 TensorRT SDK 或外部 ZIP。
+`model.build.json` 记录实际加载 DLL、包哈希、engine 哈希和转换耗时。
+源码 C ABI 构建仍可显式选择 `--builder native`，不属于 NuGet 转换验证。
 `bundle.json` 保存来源、revision、ONNX SHA256、维度和验证状态；配置的 processor
 与引擎一起保存。大型 ONNX 的 external data 文件需保留在原导出目录中。
 
@@ -106,8 +128,13 @@ python scripts/test_dinov3_native.py
 使用 `requirements-dinov3.txt` 对应环境。真实权重一键验证可执行：
 
 ```powershell
-.\scripts\Test-DinoV3.ps1 -Python path/to/python.exe -Image your-image.jpg -Checkpoint D:/models/dinov3-hf
+.\scripts\Test-DinoV3.ps1 -Python path/to/python.exe -Image your-image.jpg `
+  -Checkpoint D:/models/dinov3-hf -OutputDirectory cache/dinov3-real/custom -SkipNativeBuild
 ```
+
+`-SkipNativeBuild` 复用已有原生 DLL；转换仍通过 NuGet builder 执行。
+`-PackagesDirectory` 可指定本地 NuGet 源目录。Python 测试／验证脚本按仓库约定仅保留本地，
+不随 Git 分发；上述验证命令需要这些本地脚本。
 
 目前测试覆盖两种架构、ViT 的 4 个 register token 剔除、FP32／允许 FP16、
 大小图与 1×1 图、官方 processor 数值对照、CHW 输入、特征 map 排列、L2 归一化、

@@ -31,3 +31,7 @@ C# 封装 .NET 4.7.2/6/8 编译通过；YOLO11/YOLO26/RF-DETR C# 实际推理，
 2026-10-29：SAM3 六个微型随机权重算子图的 PyTorch/ONNX/TensorRT、C++ 提示状态和 C# 调用测试通过。
 后续已取得本地 SAM3.1 权重：完整 1008×1008 FP32 的框、正负点、文本与 C# 实测通过；
 详见 [SAM3.1 真实模型验证](../sam3/VALIDATION.md)。此前微型测试仍保留为算子／接口回归用例。
+
+2026-11-08：DINOv3 ViT-S/16、ViT-S+/16、ConvNeXt-Tiny 的本地预训练权重已完成
+实际 NuGet builder 转换和 21 组真实图像 FP32 对照，C# NuGet 输出与 C ABI 逐字节一致。
+相似度示例和 PCA 特征图已生成，范围、误差及复现方式见 [DINOv3 验证记录](../dinov3/VALIDATION.md)。

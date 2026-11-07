@@ -1,9 +1,10 @@
 """Export authorized DINOv3 ViT/ConvNeXt image-feature models to a fixed-size ONNX bundle."""
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
+from dinov3_checkpoint import checkpoint_metadata, load_pretrained
+from tensorrt_nuget_builder import sha256
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("USE_FLAX", "0")
 
@@ -34,7 +35,7 @@ def feature_wrapper(torch, model):
     return Features().eval(), stride
 
 
-def export_bundle(model, processor, output, image_size, checkpoint, synthetic=False):
+def export_bundle(model, processor, output, image_size, checkpoint, synthetic=False, source_files=None):
     import torch
     import onnx
     import numpy as np
@@ -54,7 +55,9 @@ def export_bundle(model, processor, output, image_size, checkpoint, synthetic=Fa
         raise ValueError("DINOv3 native preprocessing requires rescale + bilinear resize without center crop")
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    sample = torch.randn(1, 3, image_size, image_size)
+    # A failed re-export must not leave a previous successful bundle receipt.
+    (output / "bundle.json").unlink(missing_ok=True)
+    sample = torch.randn(1, 3, image_size, image_size, generator=torch.Generator().manual_seed(123))
     target = output / "model.onnx"
     with torch.inference_mode():
         reference = module(sample)
@@ -75,7 +78,8 @@ def export_bundle(model, processor, output, image_size, checkpoint, synthetic=Fa
                 "revision": getattr(model.config, "_commit_hash", None),
                 "synthetic": synthetic, "image_size": image_size, "stride": stride,
                 "register_tokens_excluded": getattr(model.config, "num_register_tokens", 0),
-                "onnx": "model.onnx", "onnx_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+                "onnx": "model.onnx", "onnx_sha256": sha256(target),
+                "source_files": source_files, "strict_weight_loading": not synthetic,
                 "preprocess": "RGB rescale -> float antialiased bilinear resize -> ImageNet normalization",
                 "torch": torch.__version__, "transformers": transformers.__version__, "outputs": parity,
                 "status": "SYNTHETIC_ONNX_VERIFIED" if synthetic else "ONNX_VERIFIED_TENSORRT_VALIDATION_REQUIRED"}
@@ -95,17 +99,17 @@ def main():
         p.error("DINOv3 official weights require authorized access. Log in locally with hf auth login or pass --checkpoint LOCAL_HF_SNAPSHOT.")
     import torch
     import transformers
-    from transformers import AutoConfig, AutoModel, AutoImageProcessor
+    from transformers import AutoConfig, AutoImageProcessor
     if transformers.__version__ != "5.8.0":
         p.error("Use transformers==5.8.0 for the validated export API")
     torch.set_num_threads(4)
+    source_files = checkpoint_metadata(a.checkpoint)
     config = AutoConfig.from_pretrained(a.checkpoint)
     if config.model_type not in ("dinov3_vit", "dinov3_convnext"):
         p.error("Checkpoint must be a DINOv3 ViT or ConvNeXt backbone")
     processor = AutoImageProcessor.from_pretrained(a.checkpoint)
-    attention = {"attn_implementation": "eager"} if config.model_type == "dinov3_vit" else {}
-    model = AutoModel.from_pretrained(a.checkpoint, config=config, dtype=torch.float32, **attention).eval()
-    export_bundle(model, processor, a.output, a.image_size, a.checkpoint)
+    model = load_pretrained(a.checkpoint, config)
+    export_bundle(model, processor, a.output, a.image_size, a.checkpoint, source_files=source_files)
 
 
 if __name__ == "__main__":

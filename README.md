@@ -1,160 +1,209 @@
-# alanxinn_cvinfer
+# Cvinfer · TensorRT 10
 
-TensorRT/Denglin 双后端推理项目，包含：
+面向 C++ 和 C#／.NET 的 GPU 图像推理与 ONNX 模型转换工具。
+当前 `trt10` 分支以 **TensorRT 10.16.1.11 + CUDA 12.9** 为主要环境，
+提供 C++、C ABI、C# 封装、Python 导出／推理脚本和统一 C# Demo；另保留可选的登临（Denglin）后端。
 
-- `core/tensorrt`：TensorRT engine、输入输出 tensor、CUDA stream。
-- `core/denglin`：可选的登临（Denglin）dlNNE 独立 Core；通过公共 Session
-  接口接入 YOLO、RF-DETR 和 C ABI。
-- `yolo`：YOLO11 检测、分割、pose 前后处理。
-- `rf_detr`：RF-DETR 检测/分割前后处理。
-- `sam3`：SAM3 框与正负点交互、文本概念分割；已使用本地 SAM3.1 真实权重完成 C ABI/C# 推理对照验证。
-- `sam2`：SAM2.1 图片框选、正负点、纯点提示及连续掩码修正；已使用官方 tiny 权重完成 NuGet 转换及真实图片推理对照验证。
-- `dinov3`：DINOv3 ViT/ConvNeXt 图像特征推理，输出全局向量、patch 特征与特征图。
-- `mediapipe`：TensorRT 10 手掌检测与 21 点手部推理，支持自动下载模型、转换 engine、C++/C ABI/C# 调用。
-- `api`：稳定 C ABI 动态库。
-- `tensorrt_builder`：ONNX 转 TensorRT engine。
-- `csharp`：C# P/Invoke、NuGet 和 Demo。
+项目地址：[alanxinn/cvinfer](https://github.com/alanxinn/cvinfer)。
+
+## 功能概览
+
+| 模块 | 已实现功能 | 说明 |
+| --- | --- | --- |
+| YOLO11 / YOLO26 | 目标检测、实例分割、人体姿态关键点 | 支持预处理、后处理和耗时统计；[模块说明](yolo/README.md) |
+| RF-DETR | 目标检测、实例分割 | 默认使用 FP32 保持数值一致性 |
+| SAM2.1 | 图片框选、正负点、纯点提示、连续掩码修正 | 支持删除点、清空提示和缓存图像特征；支持 tiny / small / base-plus / large，默认下载 tiny；[模块说明](sam2/README.md) |
+| SAM3 / SAM3.1 | 框与正负点交互分割、文本短语概念分割 | 累积点提示；文本返回多个实例的框、分数和掩码；支持本地 SAM3.1 multiplex 权重转换；[模块说明](sam3/README.md) |
+| DINOv3 | ViT / ConvNeXt 单图特征提取 | 输出全局向量、归一化向量、patch 特征和 NCHW 特征图，提供余弦相似度接口；[模块说明](dinov3/README.md) |
+| MediaPipe Hands | 手掌检测、多手 21 点推理 | 输出左右手、原图关键点和世界坐标，支持旋转裁剪、模型自动下载；[模块说明](mediapipe/README.md) |
+| ONNX Builder | ONNX → TensorRT engine | C# 调用原生 builder，无需 trtexec；支持 FP32 / FP16 / INT8 配置、动态输入 profile、workspace 和设备选择；[模块说明](tensorrt_builder/README.md) |
+
+SAM2.1 当前仅支持图片交互，语言描述和视频留待后续。
+SAM3 不包含视频传播、记忆及多对象 multiplex；原生文本接口支持英文 ASCII 短语，
+其他文本可通过官方 tokenizer 编码接口传入，具体语言效果需另行验证。
+MediaPipe 逐图片检测，不包含跨帧跟踪。DINOv3 输出图像特征，分类／检测／分割任务头需另行接入。
 
 ## 运行环境
 
-TRT10 构建及模型验证见 [适配说明](docs/TRT10.md) 和 [本机验证记录](docs/TRT10_VALIDATION.md)。
-SAM3 的导出、接口、测试范围和权重要求见 [SAM3 说明](sam3/README.md)。
-SAM2.1 的四种模型规格、交互接口和验证流程见 [SAM2.1 说明](sam2/README.md)。
-DINOv3 的图像推理、特征输出和验证范围见 [DINOv3 说明](dinov3/README.md)。
-MediaPipe 手部模型的自动下载、engine 转换和推理测试见 [手部推理说明](mediapipe/README.md)。
-
-当前构建配置使用：
-
-| 组件 | 版本 |
+| 项目 | 当前配置 |
 | --- | --- |
-| CUDA Toolkit | 12.9.86 |
-| cuDNN（可选插件依赖） | 9.27.0（默认不打包） |
+| 平台 | Windows x64，应用使用 x64 进程 |
 | TensorRT | 10.16.1.11（CUDA 12） |
-| Denglin SDK | `E:/denglin-hamming/sdk`（启用 Denglin 时） |
+| CUDA Toolkit | 12.9.86 |
+| cuDNN | 9.27.0，可选，默认不打包 |
+| .NET 类库 | .NET Framework 4.7.2、.NET 6、.NET 8 |
+| C# Demo | .NET 8 Windows |
+| GPU 资源 | SM86、SM89、SM120，面向 RTX 30／40／50 系列 |
 
-需使用与 CUDA、TensorRT 和 GPU 架构匹配的驱动及运行库。
+NuGet 部署提供相应 TensorRT／CUDA 运行库，无需另装完整 SDK；机器仍需安装兼容的 NVIDIA 驱动。
+模型和 engine 不随 NuGet 分发。engine 应在目标显卡与匹配的 TensorRT 环境中构建，
+旧 TensorRT 8 engine 需要从 ONNX 重新转换。
 
-推理 NuGet 包包含对应的 native API 和运行时 DLL，应用只需安装匹配的
-NVIDIA/Denglin 驱动。新版 TensorRT NuGet 自动还原 Core 与 RTX 30/40/50 资源依赖，
-ONNX builder 首次使用自动合并 PTX/SM120 大文件，无需用户安装 SDK 或下载 ZIP。
-默认不打包 cuDNN/cuBLAS/NVRTC，仅特定插件需要时显式开启。
-详细清单见 [TRT10 DLL 依赖](docs/TRT10_DLL_DEPENDENCIES.md)。
+默认不打包 cuDNN、cuBLAS、NVRTC；特定插件需要时显式启用可选依赖。
+源码构建需要本机 CUDA、TensorRT、OpenCV、MSVC 和 Ninja。
+详细清单见 [DLL 依赖](docs/TRT10_DLL_DEPENDENCIES.md) 和 [TRT10 适配说明](docs/TRT10.md)。
 
-## NuGet Packages
+## NuGet 包
 
-本分支已在 `package/TensorRT10` 生成版本 `0.2.0` 的本地包，尚未远程发布；下表保留已发布版本信息，
-已发布的 `0.1.x` TensorRT 包对应旧 SDK，不能与本分支的 native DLL 混用。
+当前版本为 **0.2.0**，已生成本地包，尚未远程发布。产物目录：`package/TensorRT10`。
+本分支包名在原包名末尾增加 `.TensorRT10`，C# 命名空间仍为 `alanxinn`。
+旧版无此后缀的 TensorRT 包不能与本分支原生 DLL 混用。
 
-TRT10 本地包名为 `alanxinn.CvinferSharp.TensorRT10` 和 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，
-运行 `scripts/Pack-Trt10.ps1` 可编译、打包环境并自动测试本地模型。产物位于 `package/TensorRT10`，
-安装与测试说明见 [TRT10 文档](docs/TRT10.md)。
-
-| Package | Version | Description |
+| 包名 | 用途 | 自动依赖 |
 | --- | --- | --- |
-| [alanxinn.CvinferSharp](https://www.nuget.org/packages/alanxinn.CvinferSharp) | 0.1.4 | C# TensorRT 推理封装及 TensorRT/CUDA/OpenCV runtime |
-| alanxinn.CvinferSharp.Denglin | 0.1.4 | C# Denglin 推理封装及 Denglin SDK runtime |
-| [alanxinn.TensorRtOnnxBuilder](https://www.nuget.org/packages/alanxinn.TensorRtOnnxBuilder) | 0.1.3 | C# ONNX 转 TensorRT engine，支持 FP32/FP16/INT8 |
+| `alanxinn.CvinferSharp.TensorRT10` | YOLO、RF-DETR、SAM2.1、SAM3、DINOv3、MediaPipe 推理接口及原生库 | Core 运行库包 |
+| `alanxinn.TensorRtOnnxBuilder.TensorRT10` | ONNX 转 TensorRT engine | 下列全部 8 个运行库包 |
 
-## 模型类型
+运行库独立打包，由 NuGet 自动还原，无需逐个安装：
 
-C# Demo 的 `--type` 只支持：
+| 运行库包名 | 内容 |
+| --- | --- |
+| `alanxinn.TensorRtRuntime.Core.TensorRT10` | TensorRT 核心、插件、CUDA runtime 和 VC++ 运行库 |
+| `alanxinn.TensorRtRuntime.SM86.TensorRT10` | SM86 builder 资源 |
+| `alanxinn.TensorRtRuntime.SM89.TensorRT10` | SM89 builder 资源 |
+| `alanxinn.TensorRtRuntime.PTX.Part1.TensorRT10` | PTX 资源分片 1 |
+| `alanxinn.TensorRtRuntime.PTX.Part2.TensorRT10` | PTX 资源分片 2 |
+| `alanxinn.TensorRtRuntime.PTX.Part3.TensorRT10` | PTX 资源分片 3 |
+| `alanxinn.TensorRtRuntime.SM120.Part1.TensorRT10` | SM120 资源分片 1 |
+| `alanxinn.TensorRtRuntime.SM120.Part2.TensorRT10` | SM120 资源分片 2 |
 
-```text
-yolo11-det
-yolo11-seg
-yolo11-pose
-yolo26-det
-yolo26-seg
-yolo26-pose
-rf-detr-det
-rf-detr-seg
-mediapipe-hands
-```
+转换包还原全部架构资源，不会根据当前显卡选择性下载 NuGet 包。
+首次转换自动合并 PTX／SM120 分片并校验哈希，正常使用无需去 GitHub 下载 runtime ZIP。
+打包生成的 `tensorrt10.16.1.11-cuda12.9-sm86-sm89-sm120-runtime-win-x64.zip` 用于离线备用。
+远程发布时需同时提供两个主包和 8 个依赖包。
 
-示例：
+从当前仓库根目录向已有 C# 项目安装本地包（替换项目路径）：
 
 ```powershell
-alanxinn.CvinferDemo.exe `
+dotnet add .\YourApp\YourApp.csproj package alanxinn.CvinferSharp.TensorRT10 --version 0.2.0 --source .\package\TensorRT10
+# 需要转换 ONNX 时再安装 builder
+dotnet add .\YourApp\YourApp.csproj package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.0 --source .\package\TensorRT10
+```
+
+后续还原需在 NuGet 源中保留该本地目录；更多部署说明见 [C# 推理包说明](csharp/alanxinn.CvinferSharp/README.md)。
+
+## 快速使用
+
+### 图片检测、分割和姿态
+
+统一 Demo 默认引用本地 TRT10 源码项目，需要先完成下方源码构建。以 RF-DETR 分割为例：
+
+```powershell
+dotnet run --project .\csharp\alanxinn.CvinferDemo -c Release -- `
   --type rf-detr-seg `
   --model rfdetr-seg-nano.engine `
   --img bus.jpg `
-  --warmup 100 `
-  --iterations 1000 `
-  --preprocess auto `
-  --postprocess auto `
-  --timing
+  --warmup 10 --iterations 100 --timing
 ```
 
-输入尺寸和类别数默认从 engine 输出自动读取；`--classes` 仅用于显式限制类别数。
-手部推理使用 `--type mediapipe-hands --palm-model palm.engine --model hand.engine`，
-输出关键点图片和 JSON，完整用法见 [手部推理说明](mediapipe/README.md)。
-接口集成测试统一使用 `CvinferDemo --test integration` 或 `--test sam3-real`，
-参数和复现命令见 [C# 测试说明](csharp/README.md#统一接口测试入口)。
-`warmup` 不计入统计，`iterations` 为正式统计次数。
-计时默认关闭，需要输出耗时统计时添加 `--timing`。
+`--type` 支持 `yolo11-det`、`yolo11-seg`、`yolo11-pose`、`yolo26-det`、
+`yolo26-seg`、`yolo26-pose`、`rf-detr-det`、`rf-detr-seg` 和 `mediapipe-hands`。
+输入尺寸和类别数默认从 engine 读取，`--classes` 可显式限制类别数。
+`warmup` 不计入统计；计时默认关闭，添加 `--timing` 开启。
+手部模式还需 `--palm-model palm.engine`，用法见 [MediaPipe Hands](mediapipe/README.md)。
 
-## 构建
+### SAM2.1 图片交互分割
 
-本分支默认构建 TensorRT 10 后端。自动初始化 MSVC 和 Ninja：
+准备好包含编码器、解码器和 `bundle.json` 的 engine 目录后：
+
+```csharp
+using alanxinn;
+
+using var sam = new Sam2Segmentor("cache/sam2.1/engines");
+sam.SetImage(bgrBytes, width, height); // 连续 BGR uint8 数据
+sam.SetBox(50, 390, 245, 910);         // 原图 XYXY 坐标
+var initial = sam.Predict();
+sam.AddPoint(150, 600, positive: true);
+sam.AddPoint(240, 850, positive: false);
+var refined = sam.Predict(usePreviousMask: true);
+```
+
+`Predict(true)` 需要已有成功预测的掩码，输出为原图大小的 0/255 掩码。
+权重下载、四种规格导出、删除点和纯点提示见 [SAM2.1 说明](sam2/README.md)。
+SAM3 使用 `Sam3Segmentor`，DINOv3 使用 `DinoV3FeatureExtractor`，
+分别参见 [SAM3 示例](sam3/README.md) 和 [DINOv3 示例](dinov3/README.md)。
+这些接口不属于上面 Demo 的普通 `--type` 参数。
+
+### ONNX 转 engine
+
+转换 Demo 调用与 NuGet 转换包相同的 `TensorRtOnnxBuilder` 接口：
 
 ```powershell
+dotnet run --project .\csharp\alanxinn.TensorRtOnnxBuilderDemo -c Release -- `
+  --onnx .\models\model.onnx `
+  --engine .\engines\model.engine `
+  --precision fp32 --no-tf32 --workspace-mib 2048
+```
+
+动态输入配置和 API 见 [转换 Demo](csharp/alanxinn.TensorRtOnnxBuilderDemo/README.md)。
+RF-DETR 默认保持 FP32，验证时关闭 TF32；FP16／INT8 的可用性和精度需按具体模型验证。
+模型下载／导出依赖各模块的 Python 环境，部分权重需要官方授权；权重不会随安装 NuGet 自动下载。
+
+## 验证状态
+
+已记录的真实 GPU 验证环境为 **RTX 4060 8GB（SM89）、Windows x64**。
+SM86／SM120 运行资源已打包，尚无 RTX 30／50 系列实机验证记录。
+
+| 范围 | 已完成验证 |
+| --- | --- |
+| YOLO11n / YOLO26n | 检测、分割、姿态共 6 个真实模型的 NuGet 推理 |
+| RF-DETR nano | 检测和分割 2 个真实模型的 NuGet 推理 |
+| SAM2.1 tiny | 官方权重经实际 NuGet builder 转换；9 组提示对照官方 PyTorch，mask IoU 均为 1.0；C# 掩码一致 |
+| SAM3.1 | 本地真实权重、1008×1008 FP32，框／正负点／文本与 PyTorch 对照；C# 与 C ABI 掩码一致 |
+| DINOv3 | ViT / ConvNeXt 随机权重算子图、接口和特征输出验证；官方预训练语义效果待权重补充 |
+| MediaPipe Hands | 真实模型 FP32 / FP16，对照 ONNX Runtime，并核对 C++ / C ABI / C# 输出 |
+| NuGet 部署 | 两个主包曾在 net472 / net6.0 / net8.0 独立还原并实际运行；验证自动依赖、分片合并和原生 DLL 来源 |
+
+最近一次本地 0.2.0 包消费验证共 14 项通过，包含两项 DINOv3 合成算子检查，
+报告位于 `cache/nuget-trt10-validation/validation.json`。转换验证还覆盖同进程
+builder → YOLO 推理 → builder 的连续调用，禁止回退到 SDK／外部 ZIP。
+上述结果说明本次转换和接口对照通过，不代表所有模型规格、图片或显卡均已验证。
+
+详细记录：[TRT10 模型验证](docs/TRT10_VALIDATION.md)、
+[NuGet 独立消费验证](docs/TRT10_NUGET_0.2.0_VALIDATION.md)、
+[SAM2.1](sam2/VALIDATION.md)、[SAM3.1](sam3/VALIDATION.md)、
+[DINOv3](dinov3/VALIDATION.md)、[MediaPipe](mediapipe/README.md)。
+历史记录保留当时的包大小和用例数量，当前产物哈希以 `package/TensorRT10/artifacts.json` 为准。
+
+## 源码构建与打包
+
+```powershell
+# 自动初始化 MSVC 与 Ninja，默认构建 TRT10
 .\scripts\Build-Trt10.ps1
-# 启用已有的 private/cuda_backend（本机存在时）
-.\scripts\Build-Trt10.ps1 -Preset trt10-cuda-release
+# 生成两个主包、8 个运行库包和离线 ZIP
+.\scripts\Pack-Trt10.ps1
 ```
 
-preset 已配置本机 `CUDA_ROOT`、`TENSORRT_ROOT`、`CUDNN_ROOT`、`OpenCV_DIR`。
-默认 CUDA 架构为 SM86/SM89/SM120，覆盖 RTX 30/40/50；每个 engine 应在目标显卡上构建。
-Denglin 为可选后端，需要显式启用 `BUILD_DENGLIN_BACKEND`。
-构建产物位于：
+Preset 中的 `CUDA_ROOT`、`TENSORRT_ROOT`、`CUDNN_ROOT`、`OpenCV_DIR` 需按本机安装位置调整。
+默认 CUDA 架构为 `86;89;120`。存在私有 CUDA 前后处理模块时可使用
+`Build-Trt10.ps1 -Preset trt10-cuda-release`；公开 NuGet 不依赖私有 CUDA DLL。
 
-- `build/<preset>/bin/alanxinn_cvinfer_trt.dll`：TensorRT native API；
-- `build/<preset>/bin/alanxinn_cvinfer_denglin.dll`：Denglin native API（启用 Denglin 时生成）；
-- `build/<preset>/bintrt`：TensorRT/CUDA/OpenCV runtime；
-- `build/<preset>/bindl`：Denglin SDK runtime（含 `hc2`/`hc3` loader）；
-- `build/<preset>/tensorrt_builder`：ONNX builder DLL；
-- `build/<preset>/builder_runtime`：TRT 10 parser、plugin、builder resources、CUDA 12 和 cuDNN 9 组件。
+打包脚本在本地验证脚本存在时自动执行模型消费测试；Python 测试／验证脚本按仓库约定不提交，
+全新克隆不会自带这些本地脚本，缺失时会明确跳过。统一 C# 接口测试入口和参数见
+[C# 测试说明](csharp/README.md#统一接口测试入口)。
 
-启用 Denglin Core 时额外配置：
+| 路径 | 内容 |
+| --- | --- |
+| `core/tensorrt`、`api` | TensorRT Session、tensor、CUDA stream 和 C ABI |
+| `yolo`、`rf_detr` | 检测、实例分割、姿态前后处理 |
+| `sam2`、`sam3`、`dinov3`、`mediapipe` | 独立模型接口 |
+| `tensorrt_builder` | 原生 ONNX builder |
+| `csharp` | .NET 封装、NuGet 规则和 Demo |
+| `build/trt10-release/bin` | 原生 API DLL 和 Demo |
+| `build/trt10-release/bintrt` | 推理运行库 |
+| `build/trt10-release/tensorrt_builder`、`builder_runtime` | 转换 DLL 和运行资源 |
+| `package/TensorRT10` | NuGet、离线 ZIP、产物哈希和打包日志 |
 
-```powershell
-cmake -S . -B build-denglin `
-  -DBUILD_DENGLIN_BACKEND=ON `
-  -DDENGLIN_SDK_ROOT=E:/denglin-hamming/sdk `
-  -DCUDA_ROOT="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9" `
-  -DTENSORRT_ROOT="C:/Program Files/NVIDIA GPU Computing Toolkit/TensorRT-10.16.1.11-cuda-12" `
-  -DCUDNN_ROOT="C:/Program Files/NVIDIA/CUDNN/v9.27" `
-  -DOpenCV_DIR=E:/opencv/build/x64/vc16/lib
-```
+## 可选 Denglin 后端
 
-不使用 preset 时，必须同时提供上述 CUDA、TensorRT、OpenCV 和 Denglin SDK
-路径；这些路径可按本机安装位置调整。
+保留 `core/denglin` 和公共 Session 接口，可接入 YOLO、RF-DETR 和 C ABI。
+需显式启用 `BUILD_DENGLIN_BACKEND`，配置本机 `DENGLIN_SDK_ROOT` 和相应运行环境。
+C# 使用 `CvinferInferenceBackend.Denglin`，Demo 使用 `--backend denglin`。
+SAM2.1、SAM3、DINOv3、MediaPipe 是本分支 TensorRT 专用接口，不包含在 Denglin 推理包中。
+构建、ONNX／engine 缓存和设备元数据校验见 [Denglin Core](core/denglin/README.md)。
 
-Denglin Core 当前支持 ONNX 构建、异步 `Enqueue` 推理、原始 engine
-序列化，以及带模型/SDK/设备元数据校验的 engine 缓存；详见
-`core/denglin/README.md`。
+## 使用约定
 
-C# 创建模型时可通过 `CvinferInferenceBackend.TensorRt` 或
-`CvinferInferenceBackend.Denglin` 选择推理后端。启用 Denglin 构建时，
-`--backend denglin` 可加载 ONNX 或 Denglin engine/cache；未启用时返回明确的
-unsupported 错误。
-
-## ONNX 转换
-
-```powershell
-dotnet build .\csharp\alanxinn.TensorRtOnnxBuilderDemo -c Release
-```
-
-RF-DETR 默认保持 FP32，避免 transformer 分类 logits 在 FP16 下的数值误差；验证时还关闭 TF32。
-TensorRT 8 engine 不能直接用于本分支，必须从 ONNX 重新构建。
-
-## 约定
-
-- engine 与 TensorRT、CUDA、GPU 架构相关。
-- 模型权重位于 `**/weights/`，不提交 Git。
-- 单个模型句柄默认串行使用；并发推理请创建独立句柄。
-
-详细说明见各模块 README。
-
-全部阶段变更及与原始实现的差异见
-[IMPLEMENTATION_CHANGELOG.md](IMPLEMENTATION_CHANGELOG.md)。
+- 模型权重、ONNX、engine 和本地验证产物不提交 Git，模型许可遵循上游要求。
+- 每个模型实例默认串行调用；并发推理应创建独立实例。
+- 更换 TensorRT 版本或目标 GPU 后重新构建 engine。

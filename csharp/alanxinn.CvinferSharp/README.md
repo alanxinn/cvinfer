@@ -19,7 +19,7 @@
 
 TensorRT 10 包名为 `alanxinn.CvinferSharp.TensorRT10`，本分支版本为 `0.2.0`。
 包名按 TensorRT 大版本区分，程序集名及 `using alanxinn` 保持兼容。
-0.2.0 默认覆盖 RTX 30/40/50，Core runtime 已内嵌在推理包中；只需安装本包，无需额外 Core 包、开发 SDK 或手动配置 PATH。
+0.2.0 默认覆盖 RTX 30/40/50，Core runtime 自动安装，无需开发 SDK 或手动配置 PATH。
 Engine 仍需在目标显卡生成。本地包已生成，尚未远程发布，见 [部署说明](../../docs/TRT10_DLL_DEPENDENCIES.md)。
 已发布的 0.1.x 无后缀 TensorRT 包使用旧 SDK。
 
@@ -90,7 +90,7 @@ runtimes/win-x64/native/
 
 .NET Framework 自动推断的 `win7-x64` 等 Windows x64 RID 也统一部署到上述目录。
 
-`alanxinn.CvinferSharp.TensorRT10` 单包提供：
+`alanxinn.CvinferSharp.TensorRT10` 及其自动依赖的 Core runtime 合计提供：
 
 ```text
 alanxinn_cvinfer_trt.dll

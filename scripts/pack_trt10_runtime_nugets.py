@@ -11,8 +11,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 CHUNK_BYTES = 240_000_000
-# NuGetGallery Web.config: maxAllowedContentLength = 250 * 1024 * 1024.
-MAX_PACKAGE_BYTES = 250 * 1024 * 1024
+MAX_PACKAGE_BYTES = 250_000_000
 
 
 def digest(path):
@@ -96,7 +95,7 @@ def main():
                            stdout=log, stderr=subprocess.STDOUT, check=True)
         package = output / (package_id + "." + a.version + ".nupkg")
         if package.stat().st_size > MAX_PACKAGE_BYTES:
-            raise ValueError("Package exceeds NuGet.org's 250 MiB limit: " + str(package))
+            raise ValueError("Package exceeds NuGet.org's 250MB limit: " + str(package))
 
 
 if __name__ == "__main__":

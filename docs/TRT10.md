@@ -70,9 +70,9 @@ YOLO26 的 TopK 检测集合按类别和 IoU 匹配，避免把行排序差异�
 例如 main 的 `alanxinn.CvinferSharp.<版本>.nupkg` 对应 `alanxinn.CvinferSharp.TensorRT10.<版本>.nupkg`。
 当前源码及已生成包版本为 `0.2.0`；旧 `0.2.0-trt10` 包已删除，历史验证记录仍保留原名。
 
-- `alanxinn.CvinferSharp.TensorRT10.0.2.0.nupkg`：独立推理包，Core runtime 已直接内嵌，不再依赖 Core NuGet。
+- `alanxinn.CvinferSharp.TensorRT10.0.2.0.nupkg`：推理封装，自动依赖 Core runtime 包。
 - `alanxinn.TensorRtOnnxBuilder.TensorRT10.0.2.0.nupkg`：ONNX builder，自动依赖三代 GPU 的全部资源包。
-- `alanxinn.TensorRtRuntime.*.TensorRT10`：转换包的 8 个自动还原依赖包；仅安装推理包时不需要。
+- `alanxinn.TensorRtRuntime.*.TensorRT10`：8 个自动还原的 runtime 依赖包，无需用户逐个安装。
 - `tensorrt10.16.1.11-cuda12.9-sm86-sm89-sm120-runtime-win-x64.zip`：可选备份，使用 NuGet 不需要它。
 - `artifacts.json`：产物大小和 SHA256。
 

@@ -1,7 +1,5 @@
 # TensorRT10：RTX 30/40/50 与 NuGet 自动部署
 
-2026-11-07 推理包已合并 Core，支持仅安装一个 NuGet；转换包继续独立依赖 Core，见 [合并验证记录](TRT10_CORE_MERGE.md)。
-
 2026-11-04 已编译、打包 0.2.0 并通过 11 项隔离消费测试，尚未远程发布。实机记录只覆盖 RTX 4060，
 不表示 30/50 各型号均已实测。旧 0.2.0-trt10 包不包含下面的自动依赖方案。
 
@@ -25,12 +23,10 @@ dotnet add package alanxinn.CvinferSharp.TensorRT10 --version 0.2.0
 dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.0
 ```
 
-推理包直接内嵌 Core 的 TensorRT/CUDA/MSVC 运行库，没有其他 NuGet 依赖。
-转换包仍自动还原 8 个运行库依赖，支持不安装推理包单独使用。
-文件统一部署到 runtimes/win-x64/native，无需手动安装各个子包。
+NuGet 自动还原依赖并部署到 runtimes/win-x64/native，无需手动安装各个子包。
 无需另外下载 ZIP、安装开发 SDK、配置 PATH 或运行库 URL。
 构建资源首次使用时自动合并到用户缓存并校验 SHA256；跨进程锁和临时文件保护并发初始化。
-推理包和转换包使用的 Core 包均携带 app-local x64 MSVC runtime，避免要求用户另装 VC++ Redistributable。
+Core 包携带 app-local x64 MSVC runtime，避免要求用户另装 VC++ Redistributable。
 模型仍受显存容量约束，支持某一显卡架构不代表所有大模型都能装入该型号显存。
 源码项目引用保留本地 CMake SDK 流程；发布时必须用统一脚本，避免产生缺少依赖的包。
 
@@ -49,15 +45,13 @@ NuGet.org 单包上限 250MB；本机 PTX/SM120 文件压缩后仍超限，故�
 - alanxinn.TensorRtRuntime.SM120.Part1.TensorRT10、Part2：SM120 两个编号分片包。
 
 缩写 Part2/Part3 使用同样完整前缀和 .TensorRT10 后缀，共 8 个子包。
-分片未压缩最大 240,000,000 bytes；打包与消费检查限制单包不超过 250 MiB（262,144,000 bytes）。
-此值依据 [NuGetGallery 官方配置](https://github.com/NuGet/NuGetGallery/blob/main/src/NuGetGallery/Web.config) 的 maxAllowedContentLength；旧的十进制 250,000,000 检查过于严格，已修正。
-推理包独立内嵌 Core DLL；转换包继续锁定同版本 Core 及架构资源依赖。
+分片未压缩最大 240,000,000 bytes；打包与消费检查限制单包不超过 250,000,000 bytes。
+两个主包锁定同版本依赖，不再重复内嵌大体积 Core DLL。
 
 ## 维护者操作
 
 运行 scripts/Pack-Trt10.ps1：编译多架构 public native，生成 8 个 runtime 子包，再用本地 feed
-还原依赖并打两个主包，推理包打包时自动提取 Core 资产并合并。
-只发布推理功能时只需上传推理主包；发布转换包时需先上传全部同版本 runtime 子包。
+还原依赖并打两个主包。发布时先上传全部同版本 runtime 子包，再上传主包；不能只上传主包。
 独立 ZIP 仅为备份，默认文件名包含 sm86-sm89-sm120。
 IncludeOptionalLibraries 参数只给备份 ZIP 加入可选库，不改变标准 NuGet 依赖。
 

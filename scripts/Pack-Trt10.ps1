@@ -15,6 +15,8 @@ $output = [IO.Path]::GetFullPath($OutputDirectory)
 $logs = Join-Path $output 'logs'
 $projectMetadata = [xml](Get-Content -LiteralPath (Join-Path $repo 'csharp/alanxinn.CvinferSharp/alanxinn.CvinferSharp.csproj') -Raw)
 $version = @($projectMetadata.Project.PropertyGroup.Version | Where-Object { $_ })[0]
+$runtimeMetadata = [xml](Get-Content -LiteralPath (Join-Path $repo 'csharp/TensorRtRuntime.props') -Raw)
+$runtimeVersion = $runtimeMetadata.SelectSingleNode('/Project/PropertyGroup/TensorRtRuntimePackageVersion').InnerText
 New-Item -ItemType Directory -Force -Path $logs | Out-Null
 Push-Location $repo
 try {
@@ -31,12 +33,14 @@ try {
             -BuilderArchitectures $builderArchitectures -IncludeOptionalLibraries:$IncludeOptionalLibraries *> (Join-Path $logs 'native-build.log')
         if ($LASTEXITCODE -ne 0) { throw 'TensorRT 10 native build failed; see native-build.log' }
     }
-    & $Python "$PSScriptRoot/pack_trt10_runtime_nugets.py" --output $output --version $version *> (Join-Path $logs 'runtime-nugets.log')
+    & $Python "$PSScriptRoot/pack_trt10_runtime_nugets.py" --output $output --version $runtimeVersion *> (Join-Path $logs 'runtime-nugets.log')
     if ($LASTEXITCODE -ne 0) { throw "Runtime dependency packing failed; see $logs/runtime-nugets.log" }
     foreach ($project in @('alanxinn.CvinferSharp', 'alanxinn.TensorRtOnnxBuilder')) {
         Write-Host "Packing $project.TensorRT10"
         & dotnet pack "csharp/$project/$project.csproj" -c Release -o $output `
-            -p:BundleTensorRtRuntime=true "-p:RestoreAdditionalProjectSources=$output" *> (Join-Path $logs "$project-pack.log")
+            -p:BundleTensorRtRuntime=true "-p:RestoreAdditionalProjectSources=$output" `
+            "-p:RestorePackagesPath=$repo/cache/trt10-main-packages/$version-runtime-$runtimeVersion" `
+            -p:RestoreForceEvaluate=true *> (Join-Path $logs "$project-pack.log")
         if ($LASTEXITCODE -ne 0) { throw "NuGet pack failed: $project; see $logs" }
     }
     $profile = if ($AllArchitectures) { 'all-sm' } else { ($CudaArchitectures | ForEach-Object { "sm$_" }) -join '-' }
@@ -50,12 +54,17 @@ try {
     }
     if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw "Runtime ZIP missing: $archive" }
     # Do not list older full SDK archives left in this output directory as new artifacts.
-    $currentPackages = @(Get-ChildItem -LiteralPath $output -Filter "*.$version.nupkg" -File)
+    $packageNames = @("alanxinn.CvinferSharp.TensorRT10.$version.nupkg", "alanxinn.TensorRtOnnxBuilder.TensorRT10.$version.nupkg")
+    foreach ($component in @('Core', 'SM86', 'SM89', 'PTX.Part1', 'PTX.Part2', 'PTX.Part3', 'SM120.Part1', 'SM120.Part2')) {
+        $packageNames += "alanxinn.TensorRtRuntime.$component.TensorRT10.$runtimeVersion.nupkg"
+    }
+    $currentPackages = @($packageNames | ForEach-Object { Get-Item -LiteralPath (Join-Path $output $_) })
     if ($currentPackages | Where-Object { $_.Length -gt 250000000 }) { throw 'A NuGet package exceeds the 250MB publishing limit.' }
     $artifacts = @($currentPackages + @(Get-Item -LiteralPath $archive) | ForEach-Object {
         [ordered]@{ file = $_.Name; bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     })
-    [ordered]@{ tensorRT = '10.16.1.11'; cuda = '12.9'; optionalLibraries = [bool]$IncludeOptionalLibraries;
+    [ordered]@{ packageVersion = $version; runtimePackageVersion = $runtimeVersion;
+        tensorRT = '10.16.1.11'; cuda = '12.9'; optionalLibraries = [bool]$IncludeOptionalLibraries;
         architectures = $CudaArchitectures; platform = 'win-x64'; artifacts = $artifacts } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $output 'artifacts.json') -Encoding UTF8
     $localTestScript = Join-Path $PSScriptRoot 'check_trt10_nuget.py'

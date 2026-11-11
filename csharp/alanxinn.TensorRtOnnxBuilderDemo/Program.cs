@@ -29,6 +29,7 @@ try
         EnableTf32 = arguments.EnableTf32,
         EnableSparseWeights = arguments.EnableSparseWeights,
         StrictTypes = arguments.StrictTypes,
+        StronglyTyped = arguments.StronglyTyped,
         Progress = new Progress<TensorRtBuildProgress>(PrintBuildProgress)
     };
 
@@ -123,6 +124,7 @@ static void PrintUsage()
     Console.WriteLine("  --report PATH               Save engine hash and loaded runtime paths as JSON");
     Console.WriteLine("  --sparse                    Enable sparse weights");
     Console.WriteLine("  --strict                    Enable strict TensorRT types");
+    Console.WriteLine("  --strongly-typed            Preserve ONNX tensor types; use --precision fp32");
     Console.WriteLine("  --input-name NAME           Dynamic input tensor name");
     Console.WriteLine("  --min-shape 1x3x320x320     Dynamic profile minimum shape");
     Console.WriteLine("  --opt-shape 1x3x640x640     Dynamic profile optimal shape");
@@ -151,7 +153,7 @@ sealed class DemoArguments
 
     private static readonly HashSet<string> FlagOptions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "no-tf32", "sparse", "strict"
+        "no-tf32", "sparse", "strict", "strongly-typed"
     };
 
     public string OnnxPath { get; private init; } = string.Empty;
@@ -163,6 +165,7 @@ sealed class DemoArguments
     public bool EnableTf32 { get; private init; } = true;
     public bool EnableSparseWeights { get; private init; }
     public bool StrictTypes { get; private init; }
+    public bool StronglyTyped { get; private init; }
     public bool ShowHelp { get; private init; }
     public string? InputName { get; private init; }
     public TensorRtShape? MinShape { get; private init; }
@@ -220,6 +223,7 @@ sealed class DemoArguments
             EnableTf32 = !flags.Contains("no-tf32"),
             EnableSparseWeights = flags.Contains("sparse"),
             StrictTypes = flags.Contains("strict"),
+            StronglyTyped = flags.Contains("strongly-typed"),
             InputName = inputName,
             MinShape = minShape,
             OptShape = optShape,

@@ -21,6 +21,14 @@ try
 #endif
     }
     modelTypeName = GetRequiredOption(parsed.Options, "type");
+    if (modelTypeName.Trim().Equals("wevisone", StringComparison.OrdinalIgnoreCase))
+    {
+#if CVINFER_DENGLIN_DEMO
+        throw new ArgumentException("wevisone requires the TensorRT CvinferSharp library");
+#else
+        return WeVisOneDemo.Run(parsed.Options);
+#endif
+    }
     if (modelTypeName.Trim().Equals("mediapipe-hands", StringComparison.OrdinalIgnoreCase))
     {
 #if CVINFER_DENGLIN_DEMO
@@ -37,7 +45,7 @@ try
         !modelTypeName.Equals("yolo11-pose", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("rf-detr-det", StringComparison.OrdinalIgnoreCase) &&
         !modelTypeName.Equals("rf-detr-seg", StringComparison.OrdinalIgnoreCase))
-        throw new ArgumentException("--type must be yolo11-det/seg/pose, yolo26-det/seg/pose, rf-detr-det, rf-detr-seg or mediapipe-hands");
+        throw new ArgumentException("--type must be yolo11-det/seg/pose, yolo26-det/seg/pose, rf-detr-det, rf-detr-seg, mediapipe-hands or wevisone");
     enginePath = GetRequiredOption(parsed.Options, "model");
     imagePath = GetRequiredOption(parsed.Options, "img");
     resultPath = GetOption(parsed.Options, "output", "cvinfer_result.jpg");
@@ -303,9 +311,11 @@ static ParsedArguments ParseArguments(string[] args)
         if (key is not ("type" or "model" or "img" or "output" or "classes" or "backend" or
             "preprocess" or "postprocess" or "warmup" or "iterations" or "timing" or
             "palm-model" or "palm-threshold" or "hand-threshold" or "nms" or "max-hands" or "json" or
-            "test" or "fixtures" or "sam3-model" or "dinov3-model" or "reference"))
+            "test" or "fixtures" or "sam3-model" or "dinov3-model" or "reference" or
+            "vl-task" or "query" or "prompt" or "boxes" or "box-matting" or "max-new-tokens" or
+            "temperature" or "top-p" or "top-k" or "repetition-penalty" or "mask-threshold" or "seed" or "no-pixels"))
             throw new ArgumentException($"unknown option: {token}");
-        if (key == "timing")
+        if (key is "timing" or "box-matting" or "no-pixels")
         {
             parsed.Options[key] = "true";
             continue;

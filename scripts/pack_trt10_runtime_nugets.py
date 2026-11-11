@@ -8,6 +8,7 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess
+import zipfile
 import xml.etree.ElementTree as ET
 
 CHUNK_BYTES = 240_000_000
@@ -39,7 +40,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--source", type=Path, default=Path("build/trt10-release/builder_runtime"))
     p.add_argument("--output", type=Path, default=Path("package/TensorRT10"))
-    p.add_argument("--version", default="0.2.0")
+    version_file = Path(__file__).resolve().parents[1] / "csharp/TensorRtRuntime.props"
+    runtime_version = ET.parse(version_file).findtext("./PropertyGroup/TensorRtRuntimePackageVersion")
+    p.add_argument("--version", default=runtime_version, help="Independent runtime release version, not the main package version")
     a = p.parse_args()
     source, output = a.source.resolve(), a.output.resolve()
     repo = Path(__file__).resolve().parents[1]
@@ -73,6 +76,28 @@ def main():
     groups["Core"].append(index_file)
     for component, files in groups.items():
         package_id = "alanxinn.TensorRtRuntime." + component + ".TensorRT10"
+        package = output / (package_id + "." + a.version + ".nupkg")
+        if package.is_file():
+            # Reuse an unchanged runtime release byte-for-byte. Never overwrite
+            # a published version with a different SDK/CRT payload.
+            with zipfile.ZipFile(package) as archive:
+                expected = {"runtimes/win-x64/native/" + file.name: file for file in files}
+                actual = {name for name in archive.namelist() if name.startswith("runtimes/") and not name.endswith("/")}
+                identical = actual == set(expected)
+                for name, file in expected.items():
+                    if not identical:
+                        break
+                    h = hashlib.sha256()
+                    with archive.open(name) as stream:
+                        for block in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+                            h.update(block)
+                    identical = h.hexdigest() == digest(file)
+            if not identical:
+                raise ValueError("Runtime payload changed; increment TensorRtRuntimePackageVersion before packing: " + package_id)
+            if package.stat().st_size > MAX_PACKAGE_BYTES:
+                raise ValueError("Package exceeds NuGet.org's 250MB limit: " + str(package))
+            print("Reusing unchanged", package_id, a.version, flush=True)
+            continue
         project = ET.Element("Project", Sdk="Microsoft.NET.Sdk")
         properties = ET.SubElement(project, "PropertyGroup")
         for key, value in {"TargetFramework": "net8.0", "PackageId": package_id, "Version": a.version,
@@ -93,7 +118,6 @@ def main():
             subprocess.run(["dotnet", "restore", str(csproj)], stdout=log, stderr=subprocess.STDOUT, check=True)
             subprocess.run(["dotnet", "pack", str(csproj), "--no-build", "-c", "Release", "-o", str(output)],
                            stdout=log, stderr=subprocess.STDOUT, check=True)
-        package = output / (package_id + "." + a.version + ".nupkg")
         if package.stat().st_size > MAX_PACKAGE_BYTES:
             raise ValueError("Package exceeds NuGet.org's 250MB limit: " + str(package))
 

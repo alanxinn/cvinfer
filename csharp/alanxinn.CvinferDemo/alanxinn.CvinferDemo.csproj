@@ -15,7 +15,7 @@
     <UseLocalDenglinProject Condition="'$(UseLocalDenglinProject)' == ''">false</UseLocalDenglinProject>
     <UseLocalTensorRtProject Condition="'$(UseLocalTensorRtProject)' == '' and '$(UseLocalDenglinProject)' != 'true'">true</UseLocalTensorRtProject>
     <CvinferSharpPackageId Condition="'$(CvinferSharpPackageId)' == ''">alanxinn.CvinferSharp.TensorRT10</CvinferSharpPackageId>
-    <CvinferSharpPackageVersion Condition="'$(CvinferSharpPackageVersion)' == ''">0.2.0</CvinferSharpPackageVersion>
+    <CvinferSharpPackageVersion Condition="'$(CvinferSharpPackageVersion)' == ''">0.2.1</CvinferSharpPackageVersion>
     <CvinferSharpDenglinPackageId Condition="'$(CvinferSharpDenglinPackageId)' == ''">alanxinn.CvinferSharp.Denglin</CvinferSharpDenglinPackageId>
     <CvinferSharpDenglinPackageVersion Condition="'$(CvinferSharpDenglinPackageVersion)' == ''">0.1.4</CvinferSharpDenglinPackageVersion>
     <RestoreAdditionalProjectSources>$(MSBuildProjectDirectory)\..\..\package\TensorRT10;$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\TensorRT\Release;$(MSBuildProjectDirectory)\..\alanxinn.CvinferSharp\bin\Denglin</RestoreAdditionalProjectSources>
@@ -25,6 +25,7 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(UseLocalDenglinProject)' == 'true' or '$(CvinferSharpPackageId)' == 'alanxinn.CvinferSharp.Denglin'">
     <Compile Remove="MediaPipeHandsDemo.cs" />
+    <Compile Remove="WeVisOneDemo.cs" />
     <Compile Remove="TensorRtValidation.cs" />
     <Compile Remove="NugetValidation.cs" />
   </ItemGroup>
@@ -49,6 +50,7 @@
       <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_sam3.dll" />
       <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_dinov3.dll')" />
       <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_mediapipe.dll" Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_mediapipe.dll')" />
+      <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_wevisone.dll" Condition="Exists('$(MSBuildProjectDirectory)\..\..\build\trt10-release\bin\alanxinn_cvinfer_wevisone.dll')" />
       <LocalTensorRtRuntime Include="$(MSBuildProjectDirectory)\..\..\build\trt10-release\bintrt\*.dll" />
     </ItemGroup>
     <Copy SourceFiles="@(LocalTensorRtRuntime)" DestinationFolder="$(OutDir)runtimes\win-x64\native" />

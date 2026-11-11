@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\TensorRtRuntime.props" />
   <PropertyGroup>
     <TargetFrameworks>net472;net6.0;net8.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
@@ -9,10 +10,10 @@
     <AssemblyName>alanxinn.CvinferSharp</AssemblyName>
     <PackageId>alanxinn.CvinferSharp.TensorRT10</PackageId>
 
-    <Version>0.2.0</Version>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
-    <InformationalVersion>0.2.0</InformationalVersion>
+    <Version>0.2.1</Version>
+    <AssemblyVersion>0.2.1.0</AssemblyVersion>
+    <FileVersion>0.2.1.0</FileVersion>
+    <InformationalVersion>0.2.1</InformationalVersion>
 
     <Authors>alanxinn</Authors>
     <Company>alanxinn</Company>
@@ -22,8 +23,8 @@
     <AssemblyTitle>alanxinn.CvinferSharp</AssemblyTitle>
     <AssemblyDescription>C# managed wrapper for the TensorRT native inference API.</AssemblyDescription>
 
-    <PackageTags>TensorRT;YOLO11;RF-DETR;SAM2.1;SAM3;DINOv3;MediaPipe;hands;features;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
-    <PackageReleaseNotes>RTX30/40/50 support with automatically restored TensorRT10/CUDA12 runtime dependencies; YOLO/RF-DETR, SAM2.1, SAM3, DINOv3 and MediaPipe hands. Unified CvinferDemo validation.</PackageReleaseNotes>
+    <PackageTags>TensorRT;YOLO11;RF-DETR;SAM2.1;SAM3;DINOv3;MediaPipe;WeVisOne-VL;VLM;OCR;matting;hands;features;pose;segmentation;CUDA;inference;CSharp;PInvoke</PackageTags>
+    <PackageReleaseNotes>新增 WeVisOne-VL 原生与 C# 接口，2B 的十一类任务已通过真实图片验证；支持 NFC 归一化、分割、连续 Alpha 和指定框抠图。自动依赖 TensorRT10/CUDA12 运行库。</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
@@ -47,7 +48,7 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(BundleTensorRtRuntime)' == 'true'">
-    <PackageReference Include="alanxinn.TensorRtRuntime.Core.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.Core.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -66,6 +67,10 @@
     <None Include="..\..\LICENSE.txt"
           Pack="true"
           PackagePath="LICENSE.txt"
+          Visible="false" />
+    <None Include="..\..\wevisone\licenses\*"
+          Pack="true"
+          PackagePath="licenses\wevisone\"
           Visible="false" />
   </ItemGroup>
 
@@ -87,6 +92,7 @@
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_sam2.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_sam2.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_dinov3.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_mediapipe.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_mediapipe.dll')" />
+      <AlanxinnNativeRuntimeFiles Include="$(NativeRuntimeSource)\alanxinn_cvinfer_wevisone.dll" Condition="Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_wevisone.dll')" />
       <AlanxinnNativeRuntimeFiles Include="$(NativeTrtRuntimeSource)\opencv_world*.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\cudart64_*d.dll" />
       <AlanxinnNativeRuntimeFiles Remove="$(NativeTrtRuntimeSource)\opencv_world*d.dll" />
@@ -138,6 +144,7 @@
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_sam2.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_sam2.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_dinov3.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_mediapipe.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_mediapipe.dll')" />
+      <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\alanxinn_cvinfer_wevisone.dll" Condition="Exists('$(NativeRuntimeDestination)\alanxinn_cvinfer_wevisone.dll')" />
       <AlanxinnNativePackageFiles Include="$(NativeRuntimeDestination)\opencv_world*.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\cudart64_*d.dll" />
       <AlanxinnNativePackageFiles Remove="$(NativeRuntimeDestination)\opencv_world*d.dll" />
@@ -165,6 +172,8 @@
            Condition="!Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_sam2.dll')" />
     <Error Text="alanxinn_cvinfer_mediapipe.dll was not found. Build with BUILD_MEDIAPIPE_HANDS=ON before packing."
            Condition="!Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_mediapipe.dll')" />
+    <Error Text="alanxinn_cvinfer_wevisone.dll was not found. Build with BUILD_WEVISONE=ON before packing."
+           Condition="!Exists('$(NativeRuntimeSource)\alanxinn_cvinfer_wevisone.dll')" />
     <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\tools\Assert-PublicNativeRuntime.ps1&quot; -Path &quot;$(NativeRuntimeSource)\$(NativeCvinferLibraryName)&quot;" />
   </Target>
 </Project>

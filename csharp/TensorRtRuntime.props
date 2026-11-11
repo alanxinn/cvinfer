@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Runtime releases are independent of the inference/builder package version. -->
+    <TensorRtRuntimePackageVersion Condition="'$(TensorRtRuntimePackageVersion)' == ''">0.2.0</TensorRtRuntimePackageVersion>
+    <!-- Restore the newest stable runtime when building/packing a main package.
+         NuGet exports the resolved minimum, not a floating transitive dependency. -->
+    <TensorRtRuntimeReferenceVersion Condition="'$(TensorRtRuntimeReferenceVersion)' == ''">*</TensorRtRuntimeReferenceVersion>
+  </PropertyGroup>
+</Project>

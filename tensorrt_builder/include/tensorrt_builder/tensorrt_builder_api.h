@@ -39,6 +39,9 @@ typedef struct trt_builder_config {
     int32_t device_id;
     int32_t enable_tf32;
     int32_t enable_sparse_weights;
+    /* 0=default, 1=prefer precision constraints, 2=strongly typed ONNX network.
+       Mode 2 preserves FP32 normalization inside FP16 graphs; precision must be FP32
+       (no automatic FP16/INT8 flag) because each tensor type comes from ONNX. */
     int32_t strict_types;
 } trt_builder_config_t;
 

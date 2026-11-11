@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\TensorRtRuntime.props" />
   <PropertyGroup>
     <TargetFrameworks>net472;net6.0;net8.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
@@ -9,10 +10,10 @@
     <AssemblyName>alanxinn.TensorRtOnnxBuilder</AssemblyName>
     <PackageId>alanxinn.TensorRtOnnxBuilder.TensorRT10</PackageId>
 
-    <Version>0.2.0</Version>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
-    <InformationalVersion>0.2.0</InformationalVersion>
+    <Version>0.2.1</Version>
+    <AssemblyVersion>0.2.1.0</AssemblyVersion>
+    <FileVersion>0.2.1.0</FileVersion>
+    <InformationalVersion>0.2.1</InformationalVersion>
 
     <Authors>alanxinn</Authors>
     <Company>alanxinn</Company>
@@ -21,7 +22,7 @@
     <AssemblyTitle>alanxinn.TensorRtOnnxBuilder</AssemblyTitle>
     <AssemblyDescription>C# P/Invoke wrapper for the native TensorRT ONNX builder DLL.</AssemblyDescription>
     <PackageTags>TensorRT;ONNX;engine;builder;CUDA;CSharp;PInvoke;NvOnnxParser</PackageTags>
-    <PackageReleaseNotes>TensorRT 10.16 / CUDA 12.9 builder with automatic RTX30/40/50 runtime dependencies, verified resource reassembly and no separate SDK installation.</PackageReleaseNotes>
+    <PackageReleaseNotes>新增强类型 ONNX 构建，保留 FP16 图中的 FP32 归一化，修复 WeVisOne-VL 语言模型归一化溢出；保持 TensorRT10/CUDA12 及 RTX30/40/50 运行库自动依赖。</PackageReleaseNotes>
 
     <PackageProjectUrl>https://github.com/alanxinn/cvinfer</PackageProjectUrl>
     <RepositoryUrl>https://github.com/alanxinn/cvinfer.git</RepositoryUrl>
@@ -42,14 +43,14 @@
   </PropertyGroup>
 
   <ItemGroup Condition="'$(BundleTensorRtRuntime)' == 'true'">
-    <PackageReference Include="alanxinn.TensorRtRuntime.Core.TensorRT10" Version="[$(Version)]" />
-    <PackageReference Include="alanxinn.TensorRtRuntime.SM86.TensorRT10" Version="[$(Version)]" />
-    <PackageReference Include="alanxinn.TensorRtRuntime.SM89.TensorRT10" Version="[$(Version)]" />
-    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part1.TensorRT10" Version="[$(Version)]" />
-    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part2.TensorRT10" Version="[$(Version)]" />
-    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part3.TensorRT10" Version="[$(Version)]" />
-    <PackageReference Include="alanxinn.TensorRtRuntime.SM120.Part1.TensorRT10" Version="[$(Version)]" />
-    <PackageReference Include="alanxinn.TensorRtRuntime.SM120.Part2.TensorRT10" Version="[$(Version)]" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.Core.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.SM86.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.SM89.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part1.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part2.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.PTX.Part3.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.SM120.Part1.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
+    <PackageReference Include="alanxinn.TensorRtRuntime.SM120.Part2.TensorRT10" Version="$(TensorRtRuntimeReferenceVersion)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,14 @@
+WeVisOne-VL integration notices
+
+scripts/export_wevisone.py adapts the FullCanvasAlphaCascadeHead computation
+from Tencent/WeVisOne-VL, commit 9a6bcd85404505df0d05cfb5d97512ccacf35dee.
+The adaptation keeps the instance count symbolic for ONNX export and separates
+the model into TensorRT graphs. The upstream code is licensed under Apache-2.0;
+see WeVisOne-VL-LICENSE and https://github.com/Tencent/WeVisOne-VL.
+
+The native adapter statically links nlohmann/json v3.12.0 (MIT) and PCRE2 10.46
+(BSD-3-Clause WITH PCRE2-exception). Their complete license texts accompany this
+notice. The upstream projects are https://github.com/nlohmann/json and
+https://github.com/PCRE2Project/pcre2.
+
+Model weights are not included in this repository or the NuGet package.

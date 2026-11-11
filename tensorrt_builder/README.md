@@ -2,6 +2,10 @@
 
 TensorRT ONNX→engine 的 Windows x64 C++ DLL，通过 C ABI 供 C# 调用。
 
+`trt_builder_config_t.strict_types` 支持 0（默认）、1（优先精度约束）、2（ONNX 强类型网络）。
+模式 2 要求 `precision=TRT_BUILDER_PRECISION_FP32`，不添加自动 FP16／INT8 提示，实际精度按 ONNX 张量类型执行。
+这可保留 FP16 模型中的 FP32 归一化，防止 WeVisOne-VL 语言图出现归一化溢出及全零 logits。
+
 ## 要求
 
 - Visual Studio C++17

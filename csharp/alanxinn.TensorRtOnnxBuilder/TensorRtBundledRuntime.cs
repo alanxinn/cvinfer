@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -43,7 +44,21 @@ public static partial class TensorRtRuntime
                 continue;
             var hash = ComputeSha256(manifest);
             var apiHash = ComputeSha256(Path.Combine(root, "alanxinn_tensorrt_builder.dll"));
-            var cache = Path.Combine(GetCacheDirectory(), "bundled-" + PackageVersion + "-" + hash.Substring(0, 16) + "-" + apiHash.Substring(0, 16));
+            // The Core/SM86/SM89 DLLs can be updated without changing the PTX
+            // split manifest or managed package. Include their content in the
+            // cache identity so an independent runtime update is actually used.
+            var payloadNames = direct.Concat(IncludeOptionalLibraries ? OptionalFiles : Array.Empty<string>())
+                .Concat(Directory.GetFiles(root, "msvcp140*.dll").Select(path => Path.GetFileName(path)!))
+                .Concat(Directory.GetFiles(root, "vcruntime140*.dll").Select(path => Path.GetFileName(path)!))
+                .Concat(new[] { "concrt140.dll" }).Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(name => File.Exists(Path.Combine(root, name))).OrderBy(name => name, StringComparer.OrdinalIgnoreCase);
+            string payloadHash;
+            using (var sha = SHA256.Create())
+            {
+                var identity = hash + apiHash + string.Concat(payloadNames.Select(name => name + ComputeSha256(Path.Combine(root, name))));
+                payloadHash = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(identity))).Replace("-", "").ToLowerInvariant();
+            }
+            var cache = Path.Combine(GetCacheDirectory(), "bundled-" + PackageVersion + "-" + payloadHash.Substring(0, 32));
             using (var mutex = new Mutex(false, "Local\\alanxinn.TensorRT10." + hash.Substring(0, 16)))
             {
                 try { mutex.WaitOne(); } catch (AbandonedMutexException) { /* Lock is acquired. */ }

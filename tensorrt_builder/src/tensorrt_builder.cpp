@@ -371,6 +371,10 @@ trt_builder_build_onnx_with_progress(
         static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) / (1024U * 1024U))
         return set_error("workspace_mib is too large"), TRT_BUILDER_STATUS_INVALID_ARGUMENT;
     try {
+        if (config.strict_types < 0 || config.strict_types > 2)
+            throw std::invalid_argument("strict_types must be 0, 1 or 2");
+        if (config.strict_types == 2 && config.precision != TRT_BUILDER_PRECISION_FP32)
+            throw std::invalid_argument("Strongly typed networks derive precision from ONNX; disable automatic FP16/INT8 precision hints");
         if (config.device_id >= 0) check_cuda(cudaSetDevice(config.device_id), "cudaSetDevice");
         progress.report(1, 10, "CUDA device initialized");
         Logger logger;
@@ -380,7 +384,10 @@ trt_builder_build_onnx_with_progress(
         TrtPtr<nvinfer1::IBuilder> builder(nvinfer1::createInferBuilder(logger));
         if (!builder) throw std::runtime_error("TensorRT builder creation failed");
         progress.report(3, 20, "TensorRT builder created");
-        const uint32_t network_flags = 0; // TensorRT 10 networks always use explicit batch.
+        // TensorRT 10 always uses explicit batch. Strong typing additionally
+        // preserves FP32 reduction/normalization islands in FP16 transformer ONNX.
+        const uint32_t network_flags = config.strict_types == 2
+            ? 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED) : 0;
         TrtPtr<nvinfer1::INetworkDefinition> network(builder->createNetworkV2(network_flags));
         if (!network) {
             throw std::runtime_error("TensorRT network creation failed");
@@ -426,7 +433,7 @@ trt_builder_build_onnx_with_progress(
         if (config.enable_tf32) builder_config->setFlag(nvinfer1::BuilderFlag::kTF32);
         else builder_config->clearFlag(nvinfer1::BuilderFlag::kTF32);
         if (config.enable_sparse_weights) builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
-        if (config.strict_types) {
+        if (config.strict_types == 1) {
             builder_config->setFlag(nvinfer1::BuilderFlag::kREJECT_EMPTY_ALGORITHMS);
             builder_config->setFlag(nvinfer1::BuilderFlag::kDIRECT_IO);
             builder_config->setFlag(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS);

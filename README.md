@@ -16,6 +16,7 @@
 | SAM3 / SAM3.1 | 框与正负点交互分割、文本短语概念分割 | 累积点提示；文本返回多个实例的框、分数和掩码；支持本地 SAM3.1 multiplex 权重转换；[模块说明](sam3/README.md) |
 | DINOv3 | ViT / ConvNeXt 单图特征提取 | 输出全局向量、归一化向量、patch 特征和 NCHW 特征图，提供余弦相似度接口；[模块说明](dinov3/README.md) |
 | MediaPipe Hands | 手掌检测、多手 21 点推理 | 输出左右手、原图关键点和世界坐标，支持旋转裁剪、模型自动下载；[模块说明](mediapipe/README.md) |
+| WeVisOne-VL | 检测、指代、点、计数、OCR、分割、抠图等 11 个 task | 2B 真实图片的 11 个 task 已通过 C++／C ABI／C# 对照；4B 未测；[模块说明](wevisone/README.md)、[验证记录](wevisone/VALIDATION.md) |
 | ONNX Builder | ONNX → TensorRT engine | C# 调用原生 builder，无需 trtexec；支持 FP32 / FP16 / INT8 配置、动态输入 profile、workspace 和设备选择；[模块说明](tensorrt_builder/README.md) |
 
 SAM2.1 当前仅支持图片交互，语言描述和视频留待后续。
@@ -45,7 +46,7 @@ NuGet 部署提供相应 TensorRT／CUDA 运行库，无需另装完整 SDK；�
 
 ## NuGet 包
 
-当前版本为 **0.2.0**，已生成本地包，尚未远程发布。产物目录：`package/TensorRT10`。
+当前版本为 **0.2.1**，已生成本地包，尚未远程发布。产物目录：`package/TensorRT10`。
 本分支包名在原包名末尾增加 `.TensorRT10`，C# 命名空间仍为 `alanxinn`。
 旧版无此后缀的 TensorRT 包不能与本分支原生 DLL 混用。
 
@@ -55,6 +56,9 @@ NuGet 部署提供相应 TensorRT／CUDA 运行库，无需另装完整 SDK；�
 | `alanxinn.TensorRtOnnxBuilder.TensorRT10` | ONNX 转 TensorRT engine | 下列全部 8 个运行库包 |
 
 运行库独立打包，由 NuGet 自动还原，无需逐个安装：
+
+主包与运行库版本独立：当前主包为 `0.2.1`，未变化的运行库保留 `0.2.0`。
+打包主包时选择源中的最新稳定运行库，生成允许升级的最低版本依赖，不再要求运行库与主包版本相等。
 
 | 运行库包名 | 内容 |
 | --- | --- |
@@ -75,10 +79,12 @@ NuGet 部署提供相应 TensorRT／CUDA 运行库，无需另装完整 SDK；�
 从当前仓库根目录向已有 C# 项目安装本地包（替换项目路径）：
 
 ```powershell
-dotnet add .\YourApp\YourApp.csproj package alanxinn.CvinferSharp.TensorRT10 --version 0.2.0 --source .\package\TensorRT10
-# 需要转换 ONNX 时再安装 builder
-dotnet add .\YourApp\YourApp.csproj package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.0 --source .\package\TensorRT10
+.\scripts\Install-Cvinfer.ps1 -Project .\YourApp\YourApp.csproj -Version 0.2.1 -Source "$PWD/package/TensorRT10"
+# 同时需要 ONNX 转换时添加 -IncludeBuilder
 ```
+
+安装脚本在消费项目中为运行库添加 `Version="*"` 的直接引用，并重新评估还原，选择最新稳定版本。
+普通 NuGet 安装同样支持不同版本的主包／环境包，但其传递依赖默认选择最低满足版本；包自身不能强制消费项目追新。
 
 后续还原需在 NuGet 源中保留该本地目录；更多部署说明见 [C# 推理包说明](csharp/alanxinn.CvinferSharp/README.md)。
 
@@ -122,6 +128,8 @@ var refined = sam.Predict(usePreviousMask: true);
 权重下载、四种规格导出、删除点和纯点提示见 [SAM2.1 说明](sam2/README.md)。
 SAM3 使用 `Sam3Segmentor`，DINOv3 使用 `DinoV3FeatureExtractor`，
 分别参见 [SAM3 示例](sam3/README.md) 和 [DINOv3 示例](dinov3/README.md)。
+WeVisOne-VL 使用 `WeVisOneModel`，统一 Demo 入口为 `--type wevisone --vl-task <task>`，
+模型准备、固定画布及当前验证状态见 [WeVisOne-VL](wevisone/README.md)。WeVisOne-VL 接口与 DLL 使用本次源码生成的 0.2.1 包，旧 0.2.0 包不包含该模块。
 这些接口不属于上面 Demo 的普通 `--type` 参数。
 
 ### ONNX 转 engine

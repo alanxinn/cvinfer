@@ -56,6 +56,8 @@ public sealed class TensorRtBuildOptions
     public bool EnableTf32 { get; set; } = true;
     public bool EnableSparseWeights { get; set; }
     public bool StrictTypes { get; set; }
+    /// <summary>Preserve ONNX tensor types, including FP32 normalization in FP16 graphs. Requires Precision=Fp32 (no automatic precision hints).</summary>
+    public bool StronglyTyped { get; set; }
 
     /// <summary>
     /// Dynamic ONNX inputs require one min/opt/max profile per optimization profile.

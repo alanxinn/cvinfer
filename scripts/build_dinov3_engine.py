@@ -16,7 +16,7 @@ def main():
     p.add_argument("--precision", choices=["fp32", "fp16"], default="fp32")
     p.add_argument("--builder", choices=["nuget", "native"], default="nuget")
     p.add_argument("--packages", type=Path, default=Path("package/TensorRT10"))
-    p.add_argument("--package-version", default="0.2.0")
+    p.add_argument("--package-version", default=None, help="Main builder package version; defaults to the current source version")
     p.add_argument("--nuget-cache", type=Path, default=Path("cache/trt10-nuget-builder"))
     p.add_argument("--workspace-mib", type=int, default=2048)
     a = p.parse_args()

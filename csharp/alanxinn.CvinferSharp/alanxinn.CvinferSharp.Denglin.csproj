@@ -44,6 +44,7 @@
     <Compile Remove="Sam2Segmentor.cs" />
     <Compile Remove="DinoV3FeatureExtractor.cs" />
     <Compile Remove="MediaPipeHandDetector.cs" />
+    <Compile Remove="WeVisOneModel.cs" />
     <None Remove="README.Denglin.md" />
     <None Remove="alanxinn.CvinferSharp.Denglin.targets" />
     <None Remove="alanxinn.CvinferSharp.targets" />

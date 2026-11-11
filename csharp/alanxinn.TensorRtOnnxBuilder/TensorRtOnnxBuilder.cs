@@ -62,7 +62,9 @@ public static class TensorRtOnnxBuilder
             nativeConfig.DeviceId = options.DeviceId;
             nativeConfig.EnableTf32 = options.EnableTf32 ? 1 : 0;
             nativeConfig.EnableSparseWeights = options.EnableSparseWeights ? 1 : 0;
-            nativeConfig.StrictTypes = options.StrictTypes ? 1 : 0;
+            if (options.StronglyTyped && (options.StrictTypes || options.Precision != TensorRtPrecision.Fp32))
+                throw new ArgumentException("StronglyTyped requires Precision=Fp32 and StrictTypes=false; tensor types are taken from ONNX");
+            nativeConfig.StrictTypes = options.StronglyTyped ? 2 : options.StrictTypes ? 1 : 0;
 
             if (profiles.Count > 0)
             {

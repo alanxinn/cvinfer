@@ -3,19 +3,28 @@
 C# 调用 TensorRT native builder，将 ONNX 转为 serialized engine。
 不启动 `trtexec.exe`。
 
+混合 FP16 张量和 FP32 归一化的 ONNX（如 WeVisOne-VL）应设置
+`StronglyTyped = true, Precision = TensorRtPrecision.Fp32, EnableTf32 = false`。
+此时张量精度来自 ONNX，`Fp32` 表示不添加自动 FP16／INT8 降精度提示；不能同时启用 `StrictTypes`。
+对应 Demo 参数为 `--strongly-typed --precision fp32 --no-tf32`。
+
 ## 安装
 
-TensorRT 10 包名为 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，版本为 `0.2.0`。
+TensorRT 10 包名为 `alanxinn.TensorRtOnnxBuilder.TensorRT10`，版本为 `0.2.1`。
+
+运行库版本独立，当前八个环境包保留 `0.2.0`；主包打包时选择最新稳定环境包，依赖允许更高版本。
+需要在消费项目中始终使用最新稳定运行库时，运行 `scripts/Install-Cvinfer.ps1 -Project <项目.csproj> -IncludeBuilder`，
+并用 `-Source` 指定包源。脚本会为八个运行库添加浮动直接引用；普通传递依赖默认取最低满足版本。
 程序集名和 `using alanxinn.TensorRt` 保持兼容；旧的无后缀已发布包不适用于 TRT 10。
 
 ```powershell
-dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.0 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
+dotnet add package alanxinn.TensorRtOnnxBuilder.TensorRT10 --version 0.2.1 --source E:/gitproject/DualAIVison/cvinfer/package/TensorRT10
 ```
 
 要求 Windows x64、NVIDIA 驱动和匹配的 TensorRT/CUDA。
 新 NuGet 自动还原 RTX 30/40/50 的 Core、SM86/SM89/SM120 和 PTX 资源依赖，
 无需开发 SDK 或额外 ZIP；首次使用自动合并资源并校验 SHA256。
-0.2.0 本地包已编译生成，NuGet 自动部署及消费验证通过；尚未远程发布。实机验证仅覆盖 RTX 4060。
+0.2.1 新增强类型构建支持，运行库由 NuGet 自动部署；尚未远程发布。实机验证仅覆盖 RTX 4060。
 Windows x64 的派生 RID（如 .NET Framework 的 `win7-x64`）统一部署到 `runtimes/win-x64/native`。
 
 ## C# 示例
